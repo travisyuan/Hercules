@@ -9,7 +9,7 @@
 #include "../common/db.h"
 
 struct mapreg_save {
-	int uid;
+	int64 uid;
 	union {
 		int i;
 		char *str;
@@ -18,8 +18,8 @@ struct mapreg_save {
 };
 
 struct mapreg_interface {
-	DBMap *db; // int var_id -> int value
-	DBMap *str_db; // int var_id -> char* value
+	DBMap *db; // int64 var_id -> int value
+	DBMap *str_db; // int64 var_id -> char* value
 	struct eri *ers; //[Ind/Hercules]
 	char table[32];
 	bool i_dirty;
@@ -28,10 +28,10 @@ struct mapreg_interface {
 	void (*init) (void);
 	void (*final) (void);
 	/* */
-	int (*readreg) (int uid);
-	char* (*readregstr) (int uid);
-	bool (*setreg) (int uid, int val);
-	bool (*setregstr) (int uid, const char *str);
+	int (*readreg) (int64 uid);
+	char* (*readregstr) (int64 uid);
+	bool (*setreg) (int64 uid, int val);
+	bool (*setregstr) (int64 uid, const char *str);
 	void (*load) (void);
 	void (*save) (void);
 	int (*save_timer) (int tid, unsigned int tick, int id, intptr_t data);

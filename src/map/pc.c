@@ -7915,7 +7915,7 @@ int pc_candrop(struct map_session_data *sd, struct item *item)
  * Read ram register for player sd
  * get val (int) from reg for player sd
  *------------------------------------------*/
-int pc_readreg(struct map_session_data* sd, int reg)
+int pc_readreg(struct map_session_data* sd, int64 reg)
 {
 	int i;
 
@@ -7928,7 +7928,7 @@ int pc_readreg(struct map_session_data* sd, int reg)
  * Set ram register for player sd
  * memo val(int) at reg for player sd
  *------------------------------------------*/
-int pc_setreg(struct map_session_data* sd, int reg, int val)
+int pc_setreg(struct map_session_data* sd, int64 reg, int val)
 {
 	int i;
 
@@ -7957,7 +7957,7 @@ int pc_setreg(struct map_session_data* sd, int reg, int val)
  * Read ram register for player sd
  * get val (str) from reg for player sd
  *------------------------------------------*/
-char* pc_readregstr(struct map_session_data* sd, int reg)
+char* pc_readregstr(struct map_session_data* sd, int64 reg)
 {
 	int i;
 
@@ -7970,7 +7970,7 @@ char* pc_readregstr(struct map_session_data* sd, int reg)
  * Set ram register for player sd
  * memo val(str) at reg for player sd
  *------------------------------------------*/
-int pc_setregstr(struct map_session_data* sd, int reg, const char* str)
+int pc_setregstr(struct map_session_data* sd, int64 reg, const char* str)
 {
 	int i;
 

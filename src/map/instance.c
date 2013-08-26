@@ -109,7 +109,7 @@ int instance_create(int owner_id, const char *name, enum instance_owner_type typ
 	instance->list[i].num_map = 0;
 	instance->list[i].owner_id = owner_id;
 	instance->list[i].owner_type = type;
-	instance->list[i].vars = idb_alloc(DB_OPT_RELEASE_DATA);
+	instance->list[i].vars = i64db_alloc(DB_OPT_RELEASE_DATA);
 	instance->list[i].respawn.map = 0;
 	instance->list[i].respawn.y = 0;
 	instance->list[i].respawn.x = 0;

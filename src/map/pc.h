@@ -863,10 +863,10 @@ struct pc_interface {
 	
 	int (*readparam) (struct map_session_data *sd,int type);
 	int (*setparam) (struct map_session_data *sd,int type,int val);
-	int (*readreg) (struct map_session_data *sd,int reg);
-	int (*setreg) (struct map_session_data *sd,int reg,int val);
-	char * (*readregstr) (struct map_session_data *sd,int reg);
-	int (*setregstr) (struct map_session_data *sd,int reg,const char *str);
+	int (*readreg) (struct map_session_data *sd,int64 reg);
+	int (*setreg) (struct map_session_data *sd,int64 reg,int val);
+	char * (*readregstr) (struct map_session_data *sd,int64 reg);
+	int (*setregstr) (struct map_session_data *sd,int64 reg,const char *str);
 	int (*readregistry) (struct map_session_data *sd,const char *reg,int type);
 	int (*setregistry) (struct map_session_data *sd,const char *reg,int val,int type);
 	char * (*readregistry_str) (struct map_session_data *sd,const char *reg,int type);
