@@ -12,6 +12,22 @@ struct block_list;
 struct npc_data;
 struct view_data;
 
+enum npc_parse_options {
+	NPO_NONE	= 0x0,
+	NPO_ONINIT	= 0x1,
+	NPO_TRADER	= 0x2,
+};
+
+enum npc_shop_currency_types {
+	NSC_ZENY,
+	NSC_CHAR_VAR,
+	NSC_ACC_VAR,
+	NSC_INSTANCE_VAR,
+	NSC_ITEM,
+	/* */
+	NSC_MAX,
+};
+
 struct npc_timerevent_list {
 	int timer,pos;
 };
@@ -21,6 +37,13 @@ struct npc_label_list {
 };
 struct npc_item_list {
 	unsigned int nameid,value;
+};
+
+struct npc_shop_data {
+	struct npc_item_list *item;
+	int items;//count
+	int currency[2];/* npcs can have 2 currencies (official on cash shops), primary and secondary */
+	enum npc_shop_currency_types currency_type[2];
 };
 
 struct npc_data {
@@ -58,8 +81,11 @@ struct npc_data {
 			struct npc_timerevent_list *timer_event;
 			int label_list_num;
 			struct npc_label_list *label_list;
+			/* */
+			struct npc_shop_data *shop;
+			bool trader;
 		} scr;
-		struct {
+		struct {/* TODO duck this as soon as the new shop formatting is deemed stable */
 			struct npc_item_list* shop_item;
 			int count;
 		} shop;
@@ -182,9 +208,12 @@ struct npc_interface {
 	int (*scriptcont) (struct map_session_data *sd, int id, bool closing);
 	int (*buysellsel) (struct map_session_data *sd, int id, int type);
 	int (*cashshop_buylist) (struct map_session_data *sd, int points, int count, unsigned short *item_list);
+	int (*cashshop_buylist2) (struct map_session_data *sd, struct npc_data *nd, int points, int count, unsigned short* item_list);
 	int (*buylist_sub) (struct map_session_data *sd, int n, unsigned short *item_list, struct npc_data *nd);
 	int (*cashshop_buy) (struct map_session_data *sd, int nameid, int amount, int points);
+	int (*cashshop_buy2) (struct map_session_data *sd, int nameid, int amount, int points);
 	int (*buylist) (struct map_session_data *sd, int n, unsigned short *item_list);
+	int (*buylist2) (struct map_session_data* sd, int n, unsigned short* item_list);
 	int (*selllist_sub) (struct map_session_data *sd, int n, unsigned short *item_list, struct npc_data *nd);
 	int (*selllist) (struct map_session_data *sd, int n, unsigned short *item_list);
 	int (*remove_map) (struct npc_data *nd);
@@ -202,7 +231,7 @@ struct npc_interface {
 	const char* (*parse_shop) (char *w1, char *w2, char *w3, char *w4, const char *start, const char *buffer, const char *filepath);
 	void (*convertlabel_db) (struct npc_label_list *label_list, const char *filepath);
 	const char* (*skip_script) (const char *start, const char *buffer, const char *filepath);
-	const char* (*parse_script) (char *w1, char *w2, char *w3, char *w4, const char *start, const char *buffer, const char *filepath, bool runOnInit);
+	const char* (*parse_script) (char *w1, char *w2, char *w3, char *w4, const char *start, const char *buffer, const char *filepath, int options);
 	const char* (*parse_duplicate) (char *w1, char *w2, char *w3, char *w4, const char *start, const char *buffer, const char *filepath);
 	int (*duplicate4instance) (struct npc_data *snd, int16 m);
 	void (*setcells) (struct npc_data *nd);
@@ -223,6 +252,8 @@ struct npc_interface {
 	int (*ev_label_db_clear_sub) (DBKey key, DBData *data, va_list args);
 	int (*reload) (void);
 	bool (*unloadfile) (const char *filepath);
+	void (*get_currency) (struct map_session_data *sd, struct npc_data *nd, int *val1, int *val2);
+	bool (*pay_currency) (struct map_session_data *sd, struct npc_data *nd, int qty1, int qty2);
 	void (*do_clear_npc) (void);
 	void (*debug_warps_sub) (struct npc_data *nd);
 	void (*debug_warps) (void);

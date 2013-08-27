@@ -1718,27 +1718,37 @@ void clif_npcbuysell(struct map_session_data* sd, int id)
 /// 00c6 <packet len>.W { <price>.L <discount price>.L <item type>.B <name id>.W }*
 void clif_buylist(struct map_session_data *sd, struct npc_data *nd)
 {
-	int fd,i,c;
-
+	int fd,i,c, total_count = 0;
+	struct npc_item_list *shop_item;
+	
 	nullpo_retv(sd);
 	nullpo_retv(nd);
 
+	if( nd->subtype == SCRIPT ) {
+		total_count = nd->u.scr.shop->items;
+		shop_item = nd->u.scr.shop->item;
+	} else {
+		total_count = nd->u.shop.count;
+		shop_item = nd->u.shop.shop_item;
+	}
+		
 	fd = sd->fd;
-	WFIFOHEAD(fd, 4 + nd->u.shop.count * 11);
+	WFIFOHEAD(fd, 4 + total_count * 11);
 	WFIFOW(fd,0) = 0xc6;
 
 	c = 0;
-	for( i = 0; i < nd->u.shop.count; i++ )
-	{
-		struct item_data* id = itemdb->exists(nd->u.shop.shop_item[i].nameid);
-		int val = nd->u.shop.shop_item[i].value;
-		if( id == NULL )
-			continue;
-		WFIFOL(fd, 4+c*11) = val;
-		WFIFOL(fd, 8+c*11) = pc->modifybuyvalue(sd,val);
-		WFIFOB(fd,12+c*11) = itemtype(id->type);
-		WFIFOW(fd,13+c*11) = ( id->view_id > 0 ) ? id->view_id : id->nameid;
-		c++;
+	for( i = 0; i < total_count; i++ ) {
+		if( shop_item[i].nameid ) {
+			struct item_data* id = itemdb->exists(shop_item[i].nameid);
+			int val = shop_item[i].value;
+			if( id == NULL )
+				continue;
+			WFIFOL(fd, 4+c*11) = val;
+			WFIFOL(fd, 8+c*11) = pc->modifybuyvalue(sd,val);
+			WFIFOB(fd,12+c*11) = itemtype(id->type);
+			WFIFOW(fd,13+c*11) = ( id->view_id > 0 ) ? id->view_id : id->nameid;
+			c++;
+		}
 	}
 
 	WFIFOW(fd,2) = 4 + c*11;
@@ -15368,7 +15378,9 @@ void clif_parse_Auction_buysell(int fd, struct map_session_data* sd)
 /// 0287 <packet len>.W <cash point>.L <kafra point>.L { <sell price>.L <discount price>.L <item type>.B <name id>.W }* (PACKETVER >= 20070711)
 void clif_cashshop_show(struct map_session_data *sd, struct npc_data *nd)
 {
-	int fd,i;
+	int fd,i, c = 0, total_count;
+	struct npc_item_list *shop_item;
+	int currency[2];
 #if PACKETVER < 20070711
 	const int offset = 8;
 #else
@@ -15378,23 +15390,40 @@ void clif_cashshop_show(struct map_session_data *sd, struct npc_data *nd)
 	nullpo_retv(sd);
 	nullpo_retv(nd);
 
+	if( nd->subtype == SCRIPT ) {
+		total_count = nd->u.scr.shop->items;
+		shop_item = nd->u.scr.shop->item;
+		npc->get_currency(sd, nd, &currency[0], &currency[1]);
+	} else {
+		total_count = nd->u.shop.count;
+		shop_item = nd->u.shop.shop_item;
+		currency[0] = sd->cashPoints;
+		currency[1] = sd->kafraPoints;
+	}
+	
 	fd = sd->fd;
 	sd->npc_shopid = nd->bl.id;
-	WFIFOHEAD(fd,offset+nd->u.shop.count*11);
+	
+	WFIFOHEAD(fd,offset+total_count*11);
 	WFIFOW(fd,0) = 0x287;
-	WFIFOW(fd,2) = offset+nd->u.shop.count*11;
-	WFIFOL(fd,4) = sd->cashPoints; // Cash Points
+	/* 0x2 = length, set after parsing */
+	WFIFOL(fd,4) = currency[0]; // Cash Points
 #if PACKETVER >= 20070711
-	WFIFOL(fd,8) = sd->kafraPoints; // Kafra Points
+	WFIFOL(fd,8) = currency[1]; // Kafra Points
 #endif
 
-	for( i = 0; i < nd->u.shop.count; i++ ) {
-		struct item_data* id = itemdb->search(nd->u.shop.shop_item[i].nameid);
-		WFIFOL(fd,offset+0+i*11) = nd->u.shop.shop_item[i].value;
-		WFIFOL(fd,offset+4+i*11) = nd->u.shop.shop_item[i].value; // Discount Price
-		WFIFOB(fd,offset+8+i*11) = itemtype(id->type);
-		WFIFOW(fd,offset+9+i*11) = ( id->view_id > 0 ) ? id->view_id : id->nameid;
+	for( i = 0; i < total_count; i++ ) {
+		if( shop_item[i].nameid ) {
+			struct item_data* id = itemdb->search(shop_item[i].nameid);
+			WFIFOL(fd,offset+0+i*11) = shop_item[i].value;
+			WFIFOL(fd,offset+4+i*11) = shop_item[i].value; // Discount Price
+			WFIFOB(fd,offset+8+i*11) = itemtype(id->type);
+			WFIFOW(fd,offset+9+i*11) = ( id->view_id > 0 ) ? id->view_id : id->nameid;
+			c++;
+		}
 	}
+	WFIFOW(fd,2) = offset+c*11;
+	
 	WFIFOSET(fd,WFIFOW(fd,2));
 }
 
@@ -15413,15 +15442,24 @@ void clif_cashshop_show(struct map_session_data *sd, struct npc_data *nd)
 ///     7 = You can purchase up to 10 items.
 ///     8 = Some items could not be purchased.
 void clif_cashshop_ack(struct map_session_data* sd, int error) {
+	struct npc_data *nd;
 	int fd = sd->fd;
+	int currency[2];
+		
+	if( (nd = map->id2nd(sd->npc_shopid)) && nd->subtype == SCRIPT ) {
+		npc->get_currency(sd, nd, &currency[0], &currency[1]);
+	} else {
+		currency[0] = sd->cashPoints;
+		currency[1] = sd->kafraPoints;
+	}
 
 	WFIFOHEAD(fd, packet_len(0x289));
 	WFIFOW(fd,0) = 0x289;
-	WFIFOL(fd,2) = sd->cashPoints;
+	WFIFOL(fd,2) = currency[0];
 #if PACKETVER < 20070711
 	WFIFOW(fd,6) = TOW(error);
 #else
-	WFIFOL(fd,6) = sd->kafraPoints;
+	WFIFOL(fd,6) = currency[1];
 	WFIFOW(fd,10) = TOW(error);
 #endif
 	WFIFOSET(fd, packet_len(0x289));

@@ -1805,7 +1805,7 @@ void script_set_constant(const char* name, int value, bool isparameter) {
 void script_set_constant2(const char *name, int value, bool isparameter) {
 	int n = script->add_str(name);
 
-	if( ( script->str_data[n].type == C_NAME || script->str_data[n].type == C_PARAM ) && ( script->str_data[n].val != 0 || script->str_data[n].backpatch != -1 ) ) { // existing parameter or constant
+	if( script->str_data[n].type == C_PARAM && ( script->str_data[n].val != 0 || script->str_data[n].backpatch != -1 ) ) { // existing parameter or constant
 		ShowNotice("Conflicting item/script var '%s', prioritising the script var\n",name);
 		return;
 	}
@@ -2318,8 +2318,6 @@ int set_reg(struct script_state* st, TBL_PC* sd, int64 num, const char* name, co
 				idx = 0;
 			else
 				idx = data.u.num;
-			if( is_string_variable(name) )
-			   ShowDebug("set_reg:Running on %s, %lld - %lld - %lld\n",name,idx,((int64)(num & 0xFFFFFFFF)),(int64)((num >> 32) & 0xFFFFFFFF));
 			if( idx < ((int64)((num >> 32) & 0xFFFFFFFF))+1 ) {
 				if( is_string_variable(name) ) {
 					char val[11];
@@ -2332,11 +2330,6 @@ int set_reg(struct script_state* st, TBL_PC* sd, int64 num, const char* name, co
 			/* if is string -> str = (const char * value), str == NULL || *str == 0 -> empty */
 			/* if int, val = (int)__64BPTRSIZE(value), val == 0 -> empty */
 	   }
-	} else {//DEBUG, dump on live
-		if( is_string_variable(name)  )
-			ShowDebug("Setting %s(%d)[%d] = %s\n",name,(int32)(int64)(num & 0xFFFFFFFF),(int32)(int64)((num >> 32) & 0xFFFFFFFF),(const char *)__64BPTRSIZE(value));
-		else
-			ShowDebug("Setting %s(%d)[%d] = %d\n",name,(int32)(int64)(num & 0xFFFFFFFF),(int32)(int64)((num >> 32) & 0xFFFFFFFF),(int)__64BPTRSIZE(value));
 	}
 	
 	if( is_string_variable(name) ) {// string variable
@@ -17557,6 +17550,172 @@ BUILDIN(instance_set_respawn) {
 	return true;
 }
 
+/* openshop() => opens existent (if any) npc shop into player */
+BUILDIN(openshop) {
+	struct npc_data *nd;
+	struct map_session_data *sd;
+
+	if( !(nd = map->id2nd(st->oid)) ) {
+		ShowWarning("buildin_openshop: trying to run without a proper NPC!\n");
+		script_reportsrc(st);
+		return true;
+	} else if ( !nd->u.scr.shop->items ) {
+		ShowWarning("buildin_openshop: trying to open without any items!\n");
+		script_reportsrc(st);
+		return true;
+	} else if( !( sd = script->rid2sd(st) ) ) {
+		ShowWarning("buildin_openshop: trying to run without a player attached!\n");
+		script_reportsrc(st);
+		return true;
+	}
+	
+	if( nd->u.scr.shop->currency_type[0] == NSC_ZENY && nd->u.scr.shop->currency_type[1] == NSC_ZENY ) {
+		sd->state.callshop = 1;
+		npc->buysellsel(sd,nd->bl.id,0);
+	} else
+		clif->cashshop_show(sd,nd);
+	
+	return true;
+}
+/* sellitem <Item_ID>{,price} */
+/* adds <Item_ID> (or modifies if present) to shop */
+/* if price not provided uses the item's value_sell */
+BUILDIN(sellitem) {
+	struct npc_data *nd;
+	struct item_data *it;
+	int i, id = script_getnum(st,2);
+		
+	if( !(nd = map->id2nd(st->oid)) ) {
+		ShowWarning("buildin_sellitem: trying to run without a proper NPC!\n");
+		script_reportsrc(st);
+		return true;
+	} else if ( !(it = itemdb->exists(id)) ) {
+		ShowWarning("buildin_sellitem: unknown item id '%d'!\n",id);
+		script_reportsrc(st);
+		return true;
+	}
+
+	for( i = 0; i < nd->u.scr.shop->items; i++ ) {
+		if( nd->u.scr.shop->item[i].nameid == id )
+			break;
+	}
+	
+	if( i != nd->u.scr.shop->items ) {
+		int value = script_hasdata(st,3) ? script_getnum(st, 3) : it->value_buy;
+		
+		if( value <= 0 ) {
+			ShowWarning("buildin_sellitem: can't change price to <= 0! item %s (%d) price %d\n",id,it->name,value);
+			script_reportsrc(st);
+			return true;
+		}
+		nd->u.scr.shop->item[i].value = value;
+	} else {
+		for( i = 0; i < nd->u.scr.shop->items; i++ ) {
+			if( nd->u.scr.shop->item[i].nameid == 0 )
+				break;
+		}
+
+		if( i != nd->u.scr.shop->items )
+			;
+		else {
+			i = nd->u.scr.shop->items;
+			RECREATE(nd->u.scr.shop->item, struct npc_item_list, ++nd->u.scr.shop->items);
+		}
+		nd->u.scr.shop->item[i].nameid	= it->nameid;
+		nd->u.scr.shop->item[i].value	= script_hasdata(st,3) ? script_getnum(st, 3) : it->value_buy;
+	}
+
+	return true;
+}
+/* stopselling <Item_ID> */
+/* removes <Item_ID> from the current npc shop */
+/* returns 1 on success, 0 otherwise */
+BUILDIN(stopselling) {
+	struct npc_data *nd;
+	int i, id = script_getnum(st,2);
+	
+	if( !(nd = map->id2nd(st->oid)) ) {
+		ShowWarning("buildin_stopselling: trying to run without a proper NPC!\n");
+		script_reportsrc(st);
+		return true;
+	}
+	
+	for( i = 0; i < nd->u.scr.shop->items; i++ ) {
+		if( nd->u.scr.shop->item[i].nameid == id )
+			break;
+	}
+	
+	if( i != nd->u.scr.shop->items ) {
+		/* we don't move the array / resize since its a big chunk of sequential memory */
+		nd->u.scr.shop->item[i].nameid = 0;
+		nd->u.scr.shop->item[i].value = 0;
+		
+		script_pushint(st, 1);
+	} else
+		script_pushint(st, 0);
+	
+	return true;
+}
+/* setcurrency(<Index>,<Type>,<Value>) */
+BUILDIN(setcurrency) {
+	int slot = script_getnum(st,2),
+		type = script_getnum(st,3);
+	struct script_data *data;
+	struct npc_data *nd;
+	int prev;
+	
+	if( !(nd = map->id2nd(st->oid)) ) {
+		ShowWarning("buildin_setcurrency: trying to run without a proper NPC!\n");
+		script_reportsrc(st);
+		return true;
+	} else if( slot < 0 || slot > 1 ) {
+		ShowWarning("buildin_setcurrency: invalid currency index '%d'!\n",slot);
+		script_reportsrc(st);
+		return true;
+	} else if ( type < NSC_ZENY || type > NSC_MAX ) {
+		ShowWarning("buildin_setcurrency: invalid currency type '%d'!\n",type);
+		script_reportsrc(st);
+		return true;
+	}
+	
+	prev = nd->u.scr.shop->currency_type[slot];
+	/* TODO: value -1 = disable index */
+	
+	data = script_getdata(st, 4);
+	script->get_val(st, data);
+	if( data_isstring(data) ) {
+		if( type == NSC_CHAR_VAR || type == NSC_ACC_VAR || type == NSC_INSTANCE_VAR ) {
+			nd->u.scr.shop->currency[slot] = script->add_str(script->conv_str(st, data));
+			nd->u.scr.shop->currency_type[slot] = type;
+		} else {
+			ShowWarning("buildin_setcurrency: invalid currency value/type combination '%s' (%d)!\n",script->conv_str(st, data),type);
+			script_reportsrc(st);
+			return true;
+		}
+	} else {
+		int val = script->conv_num(st, data);
+		if( type == NSC_ITEM && !itemdb->exists(val) ) {
+			ShowWarning("buildin_setcurrency: unknown item id '%d'!\n",val);
+			script_reportsrc(st);
+			return true;
+		}
+		if( type == NSC_ZENY || type == NSC_ITEM ) {
+			nd->u.scr.shop->currency[slot] = val;
+			nd->u.scr.shop->currency_type[slot] = type;
+		} else {
+			ShowWarning("buildin_setcurrency: invalid currency value/type combination '%d' (%d)!\n",val,type);
+			script_reportsrc(st);
+			return true;
+		}
+	}
+	
+	if( prev != nd->u.scr.shop->currency_type[slot] ) {
+		ShowWarning("buildin_setcurrency: currency change from '%d' to '%d' TODO clear shop!\n",prev,nd->u.scr.shop->currency_type[slot]);
+	}
+			
+	return true;
+}
+
 // declarations that were supposed to be exported from npc_chat.c
 #ifdef PCRE_SUPPORT
 	BUILDIN(defpattern);
@@ -18090,6 +18249,12 @@ void script_parse_builtin(void) {
 		BUILDIN_DEF(bg_create_team,"sii"),
 		BUILDIN_DEF(bg_join_team,"i?"),
 		BUILDIN_DEF(bg_match_over,"s?"),
+		
+		/* New Shop Support */
+		BUILDIN_DEF(openshop,""),
+		BUILDIN_DEF(sellitem,"i?"),
+		BUILDIN_DEF(stopselling,"i"),
+		BUILDIN_DEF(setcurrency,"ii?"),
 	};
 	int i,n, len = ARRAYLENGTH(BUILDIN), start = script->buildin_count;
 	char* p;
