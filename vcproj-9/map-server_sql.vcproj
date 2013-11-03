@@ -296,6 +296,22 @@
 				>
 			</File>
 			<File
+				RelativePath="..\src\map\harmony.c"
+				>
+			</File>
+			<File
+				RelativePath="..\src\map\harmony.h"
+				>
+			</File>
+			<File
+				RelativePath="..\src\common\harmonycore.c"
+				>
+			</File>
+			<File
+				RelativePath="..\src\common\harmony.h"
+				>
+			</File>
+			<File
 				RelativePath="..\src\common\db.h"
 				>
 			</File>

@@ -182,6 +182,8 @@
     <ClCompile Include="..\3rdparty\mt19937ar\mt19937ar.c" />
     <ClCompile Include="..\src\common\core.c" />
     <ClCompile Include="..\src\common\db.c" />
+    <ClCompile Include="..\src\common\harmonycore.c" />
+    <ClInclude Include="..\src\common\harmony.h" />
     <ClCompile Include="..\src\common\ers.c" />
     <ClCompile Include="..\src\common\malloc.c" />
     <ClCompile Include="..\src\common\mapindex.c" />

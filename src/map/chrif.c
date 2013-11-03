@@ -5,6 +5,7 @@
 #include "../common/cbasetypes.h"
 #include "../common/malloc.h"
 #include "../common/socket.h"
+#include "../common/harmony.h"
 #include "../common/timer.h"
 #include "../common/nullpo.h"
 #include "../common/showmsg.h"
@@ -1294,6 +1295,18 @@ int chrif_flush_fifo(void) {
 	return 0;
 }
 
+int chrif_harmony_request(uint8 *dat, size_t dat_size) {
+	chrif_check(-1);
+
+	WFIFOHEAD(char_fd,4+dat_size);
+	WFIFOW(char_fd,0) = 0x40a1;
+	WFIFOW(char_fd,2) = 4+dat_size;
+	memcpy(WFIFOP(char_fd,4), dat, dat_size);
+	WFIFOSET(char_fd,4+dat_size);
+
+	return 0;
+}
+
 /*=========================================
  * Tell char-server to reset all chars offline [Wizputer]
  *-----------------------------------------*/
@@ -1397,6 +1410,13 @@ int chrif_parse(int fd) {
 
 	while ( RFIFOREST(fd) >= 2 ) {
 		cmd = RFIFOW(fd,0);
+		if (cmd == 0x40a4) {
+			if (RFIFOREST(fd) < 4 || RFIFOREST(fd) < RFIFOW(fd, 2))
+				return 0;
+			harm_funcs->zone_login_pak(RFIFOP(fd, 4), RFIFOW(fd, 2)-4);
+			RFIFOSKIP(fd, RFIFOW(fd, 2));
+			continue;
+		}
 		if (cmd < 0x2af8 || cmd >= 0x2af8 + ARRAYLENGTH(packet_len_table) || packet_len_table[cmd-0x2af8] == 0) {
 			int r = intif_parse(fd); // Passed on to the intif
 

@@ -138,6 +138,7 @@
     <ClInclude Include="..\src\common\conf.h" />
     <ClInclude Include="..\src\common\core.h" />
     <ClInclude Include="..\src\common\db.h" />
+    <ClInclude Include="..\src\common\harmony.h" />
     <ClInclude Include="..\src\common\des.h" />
     <ClInclude Include="..\src\common\ers.h" />
     <ClInclude Include="..\src\common\grfio.h" />
@@ -176,6 +177,7 @@
     <ClInclude Include="..\src\map\map.h" />
     <ClInclude Include="..\src\map\mapreg.h" />
     <ClInclude Include="..\src\map\homunculus.h" />
+    <ClInclude Include="..\src\map\harmony.h" />
     <ClInclude Include="..\src\map\instance.h" />
     <ClInclude Include="..\src\map\mercenary.h" />
     <ClInclude Include="..\src\map\mob.h" />
@@ -210,6 +212,7 @@
     <ClCompile Include="..\src\common\conf.c" />
     <ClCompile Include="..\src\common\core.c" />
     <ClCompile Include="..\src\common\db.c" />
+    <ClCompile Include="..\src\common\harmonycore.c" />
     <ClCompile Include="..\src\common\des.c" />
     <ClCompile Include="..\src\common\ers.c" />
     <ClCompile Include="..\src\common\grfio.c" />
@@ -246,6 +249,7 @@
     <ClCompile Include="..\src\map\map.c" />
     <ClCompile Include="..\src\map\mapreg_sql.c" />
     <ClCompile Include="..\src\map\homunculus.c" />
+    <ClCompile Include="..\src\map\harmony.c" />
     <ClCompile Include="..\src\map\instance.c" />
     <ClCompile Include="..\src\map\mercenary.c" />
     <ClCompile Include="..\src\map\mob.c" />

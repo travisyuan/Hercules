@@ -46,7 +46,7 @@
 // 20120307 - 2012-03-07aRagexeRE+ - 0x970
 
 #ifndef PACKETVER
-	#define PACKETVER 20120410
+	#define PACKETVER	20120716
 	//#define PACKETVER 20111116
 #endif
 
@@ -247,6 +247,11 @@ struct storage_data {
 	int storage_amount;
 	struct item items[MAX_STORAGE];
 };
+
+#ifdef HARMSW
+	#undef HARMSW
+#endif
+#define HARMSW HARMSW_RATHENA_GROUP
 
 struct guild_storage {
 	int dirty;

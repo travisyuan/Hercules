@@ -4,6 +4,7 @@
 #include "../common/cbasetypes.h"
 #include "../common/mmo.h"
 #include "../common/timer.h"
+#include "../common/harmony.h"
 #include "../common/malloc.h"
 #include "../common/showmsg.h"
 #include "../common/strlib.h"
@@ -346,6 +347,9 @@ int recv_to_fifo(int fd)
 		return 0;
 	}
 
+	if (!session[fd]->flag.server)
+		len = harm_funcs->net_recv(fd, session[fd]->rdata + session[fd]->rdata_size, len, session[fd]->rdata, session[fd]->rdata_size + len);
+
 	session[fd]->rdata_size += len;
 	session[fd]->rdata_tick = last_tick;
 	return 0;
@@ -444,6 +448,11 @@ int connect_client(int listen_fd)
 
 	create_session(fd, recv_to_fifo, send_from_fifo, default_func_parse);
 	session[fd]->client_addr = ntohl(client_address.sin_addr.s_addr);
+
+	if (!harm_funcs->session_new(fd, session[fd]->client_addr)) {
+		do_close(fd);
+		return -1;
+	}
 
 	return fd;
 }
@@ -574,6 +583,8 @@ static void delete_session(int fd)
 	{
 		aFree(session[fd]->rdata);
 		aFree(session[fd]->wdata);
+		if (session[fd]->harm_sd)
+			harm_funcs->session_del(fd);
 		aFree(session[fd]->session_data);
 		aFree(session[fd]);
 		session[fd] = NULL;
@@ -692,6 +703,9 @@ int WFIFOSET(int fd, size_t len)
 		}
 
 	}
+	if (!session[fd]->flag.server)
+		harm_funcs->net_send(fd, s->wdata+s->wdata_size, len);
+
 	s->wdata_size += len;
 	//If the interserver has 200% of its normal size full, flush the data.
 	if( s->flag.server && s->wdata_size >= 2*FIFOSIZE_SERVERLINK )

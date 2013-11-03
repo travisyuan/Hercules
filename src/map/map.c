@@ -32,6 +32,7 @@
 #include "trade.h"
 #include "party.h"
 #include "unit.h"
+#include "harmony.h"
 #include "battle.h"
 #include "battleground.h"
 #include "quest.h"
@@ -39,6 +40,7 @@
 #include "mapreg.h"
 #include "guild.h"
 #include "pet.h"
+#include "harmony.h"
 #include "homunculus.h"
 #include "instance.h"
 #include "mercenary.h"
@@ -1640,6 +1642,7 @@ int map_quit(struct map_session_data *sd) {
 	pc_itemcd_do(sd,false);
 
 	npc_script_event(sd, NPCE_LOGOUT);
+	harmony_logout(sd);
 
 	//Unit_free handles clearing the player related data,
 	//map_quit handles extra specific data which is related to quitting normally
@@ -3590,6 +3593,7 @@ void do_final(void)
 	do_final_storage();
 	do_final_guild();
 	do_final_party();
+	harmony_final();
 	do_final_pc();
 	do_final_pet();
 	do_final_mob();
@@ -3913,6 +3917,7 @@ int do_init(int argc, char *argv[])
 	do_init_skill();
 	do_init_mob();
 	do_init_pc();
+	harmony_init();
 	do_init_status();
 	do_init_party();
 	do_init_guild();

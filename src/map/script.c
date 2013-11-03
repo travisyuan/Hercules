@@ -17327,6 +17327,8 @@ BUILDIN_FUNC(deactivatepset);
 BUILDIN_FUNC(deletepset);
 #endif
 
+#include "harmony_scriptfunc.inc"
+
 /// script command definitions
 /// for an explanation on args, see add_buildin_func
 struct script_function buildin_func[] = {
@@ -17358,6 +17360,7 @@ struct script_function buildin_func[] = {
 	BUILDIN_DEF(setarray,"rv*"),
 	BUILDIN_DEF(cleararray,"rvi"),
 	BUILDIN_DEF(copyarray,"rri"),
+#include "harmony_scriptdef.h"
 	BUILDIN_DEF(getarraysize,"r"),
 	BUILDIN_DEF(deletearray,"r?"),
 	BUILDIN_DEF(getelementofarray,"ri"),

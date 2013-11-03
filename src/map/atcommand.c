@@ -6,6 +6,7 @@
 #include "../common/timer.h"
 #include "../common/nullpo.h"
 #include "../common/core.h"
+#include "../common/harmony.h"
 #include "../common/showmsg.h"
 #include "../common/malloc.h"
 #include "../common/random.h"
@@ -2153,6 +2154,8 @@ ACMD_FUNC(refine)
 
 	return 0;
 }
+
+#include "harmony_atcommand.inc"
 
 /*==========================================
  *
@@ -8863,6 +8866,7 @@ void atcommand_basecommands(void) {
 		ACMD_DEF2("blvl", baselevelup),
 		ACMD_DEF2("jlvl", joblevelup),
 		ACMD_DEF(help),
+#include "harmony_atcommanddef_ra.inc"
 		ACMD_DEF(pvpoff),
 		ACMD_DEF(pvpon),
 		ACMD_DEF(gvgoff),
