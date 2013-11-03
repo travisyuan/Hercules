@@ -71,8 +71,10 @@
 #endif /* not ERS_ALIGN_ENTRY */
 
 enum ERSOptions {
-	ERS_OPT_NONE           = 0,
-	ERS_OPT_CLEAR          = 1,/* silently clears any entries left in the manager upon destruction */
+	ERS_OPT_NONE		= 0x0,
+	ERS_OPT_CLEAR		= 0x1,/* silently clears any entries left in the manager upon destruction */
+	ERS_OPT_WAIT		= 0x2,/* wait for entries to come in order to list! */
+	ERS_OPT_FREE_NAME	= 0x4,/* name is dynamic memory, and should be freed */
 };
 
 /**
@@ -117,6 +119,8 @@ typedef struct eri {
 	 */
 	void (*destroy)(struct eri *self);
 
+	/* */
+	void (*chunk_size) (struct eri *self, unsigned int new_size);
 } *ERS;
 
 #ifdef DISABLE_ERS
@@ -125,6 +129,7 @@ typedef struct eri {
 #	define ers_free(obj,entry) aFree(entry)
 #	define ers_entry_size(obj) (size_t)0
 #	define ers_destroy(obj)
+#	define ers_chunk_size(obj,size)
 // Disable the public functions
 #	define ers_new(size,name,options) NULL
 #	define ers_report()
@@ -136,6 +141,7 @@ typedef struct eri {
 #	define ers_free(obj,entry) (obj)->free((obj),(entry))
 #	define ers_entry_size(obj) (obj)->entry_size(obj)
 #	define ers_destroy(obj)    (obj)->destroy(obj)
+#	define ers_chunk_size(obj,size) (obj)->chunk_size(obj,size)
 
 /**
  * Get a new instance of the manager that handles the specified entry size.
@@ -152,7 +158,7 @@ ERS ers_new(uint32 size, char *name, enum ERSOptions options);
 /**
  * Print a report about the current state of the Entry Reusage System.
  * Shows information about the global system and each entry manager.
- * The number of entries are checked and a warning is shown if extra reusable 
+ * The number of entries are checked and a warning is shown if extra reusable
  * entries are found.
  * The extra entries are included in the count of reusable entries.
  */

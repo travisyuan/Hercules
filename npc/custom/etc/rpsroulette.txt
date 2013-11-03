@@ -1,11 +1,9 @@
-//===== rAthena Script =======================================
+//===== Hercules Script ======================================
 //= Rock Scissors Roulette
 //===== By: ==================================================
 //= acky
 //===== Current Version: =====================================
 //= 1.2
-//===== Compatible With: =====================================
-//= rAthena SVN
 //===== Description: =========================================
 //= Plays a hybrid Russian Roulette Rock Scissors Paper game.
 //===== Additional Comments: =================================
@@ -13,7 +11,7 @@
 //= 1.2 Fixes by Blackthunder and me [Poki#3]
 //============================================================
 
-cmd_in02,182,126,2	script	Crazy Boris	85,{
+cmd_in02,182,126,2	script	Crazy Boris	4_M_03,{
 	mes "Crazy Boris";
 	set @counter,1;
 	mes "Hey you! Up for Rock Scissors Roulette?";

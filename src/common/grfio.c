@@ -1,5 +1,6 @@
-// Copyright (c) Athena Dev Teams - Licensed under GNU GPL
-// For more information, see LICENCE in the main folder
+// Copyright (c) Hercules Dev Team, licensed under GNU GPL.
+// See the LICENSE file
+// Portions Copyright (c) Athena Dev Teams
 
 #include "../common/cbasetypes.h"
 #include "../common/des.h"
@@ -170,7 +171,7 @@ static void grf_decode_full(unsigned char* buf, size_t len, int cycle)
 	scycle = 7;
 
 	// so decrypt/de-shuffle periodically
-	j = -1; // 0, adjusted to fit the ++j step
+	j = (size_t)-1; // 0, adjusted to fit the ++j step
 	for( i = 20; i < nblocks; ++i )
 	{
 		if( i % dcycle == 0 )
@@ -250,8 +251,12 @@ int decode_zip(void* dest, unsigned long* destLen, const void* source, unsigned 
 
 
 /// zlib compress
-int encode_zip(void* dest, unsigned long* destLen, const void* source, unsigned long sourceLen)
-{
+int encode_zip(void* dest, unsigned long* destLen, const void* source, unsigned long sourceLen) {
+	if( *destLen == 0 ) /* [Ind/Hercules] */
+		*destLen = compressBound(sourceLen);
+	if( dest == NULL ) { /* [Ind/Hercules] */
+		CREATE(dest, unsigned char, *destLen);
+	}
 	return compress((Bytef*)dest, destLen, (const Bytef*)source, sourceLen);
 }
 
@@ -393,17 +398,17 @@ void* grfio_reads(const char* fname, int* size)
 	FILELIST* entry = filelist_find(fname);
 	if( entry == NULL || entry->gentry <= 0 ) {// LocalFileCheck
 		char lfname[256];
-		int declen;
 		FILE* in;
 		grfio_localpath_create(lfname, sizeof(lfname), ( entry && entry->fnd ) ? entry->fnd : fname);
 
 		in = fopen(lfname, "rb");
 		if( in != NULL ) {
+			int declen;
 			fseek(in,0,SEEK_END);
 			declen = ftell(in);
 			fseek(in,0,SEEK_SET);
 			buf2 = (unsigned char *)aMalloc(declen+1);  // +1 for resnametable zero-termination
-			if(fread(buf2, 1, declen, in) != declen) ShowError("An error occured in fread grfio_reads, fname=%s \n",fname);
+			if(fread(buf2, 1, declen, in) != (size_t)declen) ShowError("An error occured in fread grfio_reads, fname=%s \n",fname);
 			fclose(in);
 
 			if( size )
@@ -425,7 +430,7 @@ void* grfio_reads(const char* fname, int* size)
 			int fsize = entry->srclen_aligned;
 			unsigned char *buf = (unsigned char *)aMalloc(fsize);
 			fseek(in, entry->srcpos, 0);
-			if(fread(buf, 1, fsize, in) != fsize) ShowError("An error occured in fread in grfio_reads, grfname=%s\n",grfname);
+			if(fread(buf, 1, fsize, in) != (size_t)fsize) ShowError("An error occured in fread in grfio_reads, grfname=%s\n",grfname);
 			fclose(in);
 
 			buf2 = (unsigned char *)aMalloc(entry->declen+1);  // +1 for resnametable zero-termination
@@ -475,14 +480,14 @@ static char* decode_filename(unsigned char* buf, int len)
 /// @return true if the file should undergo full mode 0 decryption, and true otherwise.
 static bool isFullEncrypt(const char* fname)
 {
-	static const char extensions[4][5] = { ".gnd", ".gat", ".act", ".str" };
-	size_t i;
-
 	const char* ext = strrchr(fname, '.');
-	if( ext != NULL )
+	if( ext != NULL ) {
+		static const char extensions[4][5] = { ".gnd", ".gat", ".act", ".str" };
+		size_t i;
 		for( i = 0; i < ARRAYLENGTH(extensions); ++i )
 			if( strcmpi(ext, extensions[i]) == 0 )
 				return false;
+	}
 
 	return true;
 }
@@ -492,7 +497,7 @@ static bool isFullEncrypt(const char* fname)
 /// @param gentry index of the grf file name in the gentry_table
 static int grfio_entryread(const char* grfname, int gentry)
 {
-	long grf_size,list_size;
+	long grf_size;
 	unsigned char grf_header[0x2e];
 	int entry,entrys,ofs,grf_version;
 	unsigned char *grf_filelist;
@@ -518,9 +523,10 @@ static int grfio_entryread(const char* grfname, int gentry)
 	grf_version = getlong(grf_header+0x2a) >> 8;
 
 	if( grf_version == 0x01 ) {// ****** Grf version 01xx ******
+		long list_size;
 		list_size = grf_size - ftell(fp);
 		grf_filelist = (unsigned char *) aMalloc(list_size);
-		if(fread(grf_filelist,1,list_size,fp) != list_size) { ShowError("Couldn't read all grf_filelist element of %s \n", grfname); }
+		if(fread(grf_filelist,1,list_size,fp) != (size_t)list_size) { ShowError("Couldn't read all grf_filelist element of %s \n", grfname); }
 		fclose(fp);
 
 		entrys = getlong(grf_header+0x26) - getlong(grf_header+0x22) - 7;
@@ -553,7 +559,7 @@ static int grfio_entryread(const char* grfname, int gentry)
 #ifdef	GRFIO_LOCAL
 				aentry.gentry         = -(gentry+1);	// As Flag for making it a negative number carrying out the first time LocalFileCheck
 #else
-				aentry.gentry         = gentry+1;		// With no first time LocalFileCheck
+				aentry.gentry         = (char)(gentry+1);		// With no first time LocalFileCheck
 #endif
 				filelist_modify(&aentry);
 			}
@@ -605,13 +611,13 @@ static int grfio_entryread(const char* grfname, int gentry)
 				aentry.srclen_aligned = getlong(grf_filelist+ofs2+4);
 				aentry.declen         = getlong(grf_filelist+ofs2+8);
 				aentry.srcpos         = getlong(grf_filelist+ofs2+13)+0x2e;
-				aentry.type           = type;
+				aentry.type           = (char)type;
 				safestrncpy(aentry.fn, fname, sizeof(aentry.fn));
 				aentry.fnd			  = NULL;
 #ifdef	GRFIO_LOCAL
 				aentry.gentry         = -(gentry+1);	// As Flag for making it a negative number carrying out the first time LocalFileCheck
 #else
-				aentry.gentry         = gentry+1;		// With no first time LocalFileCheck
+				aentry.gentry         = (char)(gentry+1);		// With no first time LocalFileCheck
 #endif
 				filelist_modify(&aentry);
 			}
@@ -678,7 +684,7 @@ static bool grfio_parse_restable_row(const char* row)
 static void grfio_resourcecheck(void)
 {
 	char restable[256];
-	char *ptr, *buf;
+	char *buf;
 	int size;
 	FILE* fp;
 	int i = 0;
@@ -705,6 +711,7 @@ static void grfio_resourcecheck(void)
 	buf = (char *)grfio_reads("data\\resnametable.txt", &size);
 	if( buf != NULL )
 	{
+		char *ptr;
 		buf[size] = '\0';
 
 		ptr = buf;

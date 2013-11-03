@@ -1,5 +1,6 @@
-// Copyright (c) Athena Dev Teams - Licensed under GNU GPL
-// For more information, see LICENCE in the main folder
+// Copyright (c) Hercules Dev Team, licensed under GNU GPL.
+// See the LICENSE file
+// Portions Copyright (c) Athena Dev Teams
 
 #ifdef PCRE_SUPPORT
 
@@ -21,6 +22,7 @@
 #include <string.h>
 #include <stdarg.h>
 
+struct npc_chat_interface npc_chat_s;
 
 /**
  *  Written by MouseJstr in a vision... (2/21/2005)
@@ -69,37 +71,6 @@
  *  deletes a pset
  */
 
-/* Structure containing all info associated with a single pattern block */
-struct pcrematch_entry {
-	struct pcrematch_entry* next;
-	char* pattern;
-	pcre* pcre_;
-	pcre_extra* pcre_extra_;
-	char* label;
-};
-
-/* A set of patterns that can be activated and deactived with a single command */
-struct pcrematch_set {
-	struct pcrematch_set* prev;
-	struct pcrematch_set* next;
-	struct pcrematch_entry* head;
-	int setid;
-};
-
-/* 
- * Entire data structure hung off a NPC
- *
- * The reason I have done it this way (a void * in npc_data and then
- * this) was to reduce the number of patches that needed to be applied
- * to a ragnarok distribution to bring this code online.  I
- * also wanted people to be able to grab this one file to get updates
- * without having to do a large number of changes.
- */
-struct npc_parse {
-	struct pcrematch_set* active;
-	struct pcrematch_set* inactive;
-};
-
 
 /**
  * delete everythign associated with a entry
@@ -117,7 +88,7 @@ void finalize_pcrematch_entry(struct pcrematch_entry* e)
 /**
  * Lookup (and possibly create) a new set of patterns by the set id
  */
-static struct pcrematch_set* lookup_pcreset(struct npc_data* nd, int setid) 
+struct pcrematch_set* lookup_pcreset(struct npc_data* nd, int setid) 
 {
 	struct pcrematch_set *pcreset;
 	struct npc_parse *npcParse = (struct npc_parse *) nd->chatdb;
@@ -158,7 +129,7 @@ static struct pcrematch_set* lookup_pcreset(struct npc_data* nd, int setid)
  *
  * if the setid does not exist, this will silently return
  */
-static void activate_pcreset(struct npc_data* nd, int setid)
+void activate_pcreset(struct npc_data* nd, int setid)
 {
 	struct pcrematch_set *pcreset;
 	struct npc_parse *npcParse = (struct npc_parse *) nd->chatdb;
@@ -191,7 +162,7 @@ static void activate_pcreset(struct npc_data* nd, int setid)
  *
  * if the setid does not exist, this will silently return
  */
-static void deactivate_pcreset(struct npc_data* nd, int setid)
+void deactivate_pcreset(struct npc_data* nd, int setid)
 {
 	struct pcrematch_set *pcreset;
 	struct npc_parse *npcParse = (struct npc_parse *) nd->chatdb;
@@ -199,7 +170,7 @@ static void deactivate_pcreset(struct npc_data* nd, int setid)
 		return; // Nothing to deactivate...
 	if (setid == -1) {
 		while(npcParse->active != NULL)
-			deactivate_pcreset(nd, npcParse->active->setid);
+			npc_chat->deactivate_pcreset(nd, npcParse->active->setid);
 		return;
 	}
 	pcreset = npcParse->active;
@@ -227,7 +198,7 @@ static void deactivate_pcreset(struct npc_data* nd, int setid)
 /**
  * delete a set of patterns.
  */
-static void delete_pcreset(struct npc_data* nd, int setid)
+void delete_pcreset(struct npc_data* nd, int setid)
 {
 	int active = 1;
 	struct pcrematch_set *pcreset;
@@ -267,7 +238,7 @@ static void delete_pcreset(struct npc_data* nd, int setid)
 	
 	while (pcreset->head) {
 		struct pcrematch_entry* n = pcreset->head->next;
-		finalize_pcrematch_entry(pcreset->head);
+		npc_chat->finalize_pcrematch_entry(pcreset->head);
 		aFree(pcreset->head); // Cleanin' the last ones.. [Lance]
 		pcreset->head = n;
 	}
@@ -278,7 +249,7 @@ static void delete_pcreset(struct npc_data* nd, int setid)
 /**
  * create a new pattern entry 
  */
-static struct pcrematch_entry* create_pcrematch_entry(struct pcrematch_set* set)
+struct pcrematch_entry* create_pcrematch_entry(struct pcrematch_set* set)
 {
 	struct pcrematch_entry * e =  (struct pcrematch_entry *) aCalloc(sizeof(struct pcrematch_entry), 1);
 	struct pcrematch_entry * last = set->head;
@@ -312,8 +283,8 @@ void npc_chat_def_pattern(struct npc_data* nd, int setid, const char* pattern, c
 	const char *err;
 	int erroff;
 	
-	struct pcrematch_set * s = lookup_pcreset(nd, setid);
-	struct pcrematch_entry *e = create_pcrematch_entry(s);
+	struct pcrematch_set * s = npc_chat->lookup_pcreset(nd, setid);
+	struct pcrematch_entry *e = npc_chat->create_pcrematch_entry(s);
 	e->pattern = aStrdup(pattern);
 	e->label = aStrdup(label);
 	e->pcre_ = pcre_compile(pattern, PCRE_CASELESS, &err, &erroff, NULL);
@@ -333,10 +304,10 @@ void npc_chat_finalize(struct npc_data* nd)
 		return;
 	
 	while(npcParse->active)
-		delete_pcreset(nd, npcParse->active->setid);
+		npc_chat->delete_pcreset(nd, npcParse->active->setid);
 	
 	while(npcParse->inactive)
-		delete_pcreset(nd, npcParse->inactive->setid);
+		npc_chat->delete_pcreset(nd, npcParse->inactive->setid);
 	
 	// Additional cleaning up [Lance]
 	aFree(npcParse);
@@ -382,19 +353,19 @@ int npc_chat_sub(struct block_list* bl, va_list ap)
 					char var[6], val[255];
 					snprintf(var, sizeof(var), "$@p%i$", i);
 					pcre_copy_substring(msg, offsets, r, i, val, sizeof(val));
-					set_var(sd, var, val);
+					script->set_var(sd, var, val);
 				}
 				
 				// find the target label.. this sucks..
 				lst = nd->u.scr.label_list;
 				ARR_FIND(0, nd->u.scr.label_list_num, i, strncmp(lst[i].name, e->label, sizeof(lst[i].name)) == 0);
 				if (i == nd->u.scr.label_list_num) {
-					ShowWarning("Unable to find label: %s\n", e->label);
+					ShowWarning("npc_chat_sub: Unable to find label: %s\n", e->label);
 					return 0;
 				}
 				
 				// run the npc script
-				run_script(nd->u.scr.script,lst[i].pos,sd->bl.id,nd->bl.id);
+				script->run(nd->u.scr.script,lst[i].pos,sd->bl.id,nd->bl.id);
 				return 0;
 			}
 		}
@@ -404,47 +375,56 @@ int npc_chat_sub(struct block_list* bl, va_list ap)
 }
 
 // Various script builtins used to support these functions
+BUILDIN(defpattern) {
+	int setid = script_getnum(st,2);
+	const char* pattern = script_getstr(st,3);
+	const char* label = script_getstr(st,4);
+	struct npc_data* nd = (struct npc_data *)map->id2bl(st->oid);
+	
+	npc_chat->def_pattern(nd, setid, pattern, label);
 
-int buildin_defpattern(struct script_state* st)
-{
-	int setid = conv_num(st,& (st->stack->stack_data[st->start+2]));
-	const char* pattern = conv_str(st,& (st->stack->stack_data[st->start+3]));
-	const char* label = conv_str(st,& (st->stack->stack_data[st->start+4]));
-	struct npc_data* nd = (struct npc_data *)map_id2bl(st->oid);
-	
-	npc_chat_def_pattern(nd, setid, pattern, label);
-	
-	return 0;
+	return true;
 }
 
-int buildin_activatepset(struct script_state* st)
-{
-	int setid = conv_num(st,& (st->stack->stack_data[st->start+2]));
-	struct npc_data* nd = (struct npc_data *)map_id2bl(st->oid);
+BUILDIN(activatepset) {
+	int setid = script_getnum(st,2);
+	struct npc_data* nd = (struct npc_data *)map->id2bl(st->oid);
 	
-	activate_pcreset(nd, setid);
-	
-	return 0;
+	npc_chat->activate_pcreset(nd, setid);
+
+	return true;
 }
 
-int buildin_deactivatepset(struct script_state* st)
-{
-	int setid = conv_num(st,& (st->stack->stack_data[st->start+2]));
-	struct npc_data* nd = (struct npc_data *)map_id2bl(st->oid);
+BUILDIN(deactivatepset) {
+	int setid = script_getnum(st,2);
+	struct npc_data* nd = (struct npc_data *)map->id2bl(st->oid);
 	
-	deactivate_pcreset(nd, setid);
+	npc_chat->deactivate_pcreset(nd, setid);
 	
-	return 0;
+	return true;
 }
 
-int buildin_deletepset(struct script_state* st)
-{
-	int setid = conv_num(st,& (st->stack->stack_data[st->start+2]));
-	struct npc_data* nd = (struct npc_data *)map_id2bl(st->oid);
+BUILDIN(deletepset) {
+	int setid = script_getnum(st,2);
+	struct npc_data* nd = (struct npc_data *)map->id2bl(st->oid);
 	
-	delete_pcreset(nd, setid);
+	npc_chat->delete_pcreset(nd, setid);
+
+	return true;
+}
+
+void npc_chat_defaults(void) {
+	npc_chat = &npc_chat_s;
 	
-	return 0;
+	npc_chat->sub = npc_chat_sub;
+	npc_chat->finalize = npc_chat_finalize;
+	npc_chat->def_pattern = npc_chat_def_pattern;
+	npc_chat->create_pcrematch_entry = create_pcrematch_entry;
+	npc_chat->delete_pcreset = delete_pcreset;
+	npc_chat->deactivate_pcreset = deactivate_pcreset;
+	npc_chat->activate_pcreset = activate_pcreset;
+	npc_chat->lookup_pcreset = lookup_pcreset;
+	npc_chat->finalize_pcrematch_entry = finalize_pcrematch_entry;
 }
 
 #endif //PCRE_SUPPORT

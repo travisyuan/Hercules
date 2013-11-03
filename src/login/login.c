@@ -1,6 +1,6 @@
-// Copyright (c) Hercules dev team, licensed under GNU GPL.
+// Copyright (c) Hercules Dev Team, licensed under GNU GPL.
 // See the LICENSE file
-// Portions Copyright (c) Athena dev team
+// Portions Copyright (c) Athena Dev Teams
 
 #include "../common/core.h"
 #include "../common/db.h"
@@ -11,7 +11,11 @@
 #include "../common/socket.h"
 #include "../common/strlib.h"
 #include "../common/timer.h"
+<<<<<<< HEAD
 #include "../common/harmony.h"
+=======
+#include "../common/HPM.h"
+>>>>>>> 566529c819bcf9aeb1bd3a4a691c443c2b88d076
 #include "account.h"
 #include "ipban.h"
 #include "login.h"
@@ -26,30 +30,13 @@ struct Login_Config login_config;
 int login_fd; // login server socket
 struct mmo_char_server server[MAX_SERVERS]; // char server data
 
-// Account engines available
-static struct{
+static struct account_engine {
 	AccountDB* (*constructor)(void);
 	AccountDB* db;
-} account_engines[] = {
-	{account_db_sql, NULL},
-#ifdef ACCOUNTDB_ENGINE_0
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_0), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_1
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_1), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_2
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_2), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_3
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_3), NULL},
-#endif
-#ifdef ACCOUNTDB_ENGINE_4
-	{ACCOUNTDB_CONSTRUCTOR(ACCOUNTDB_ENGINE_4), NULL},
-#endif
-	// end of structure
-	{NULL, NULL}
+} account_engine[] = {
+	{account_db_sql, NULL}
 };
+
 // account database
 AccountDB* accounts = NULL;
 
@@ -98,7 +85,7 @@ struct online_login_data {
 };
 
 static DBMap* online_db; // int account_id -> struct online_login_data*
-static int waiting_disconnect_timer(int tid, unsigned int tick, int id, intptr_t data);
+static int waiting_disconnect_timer(int tid, int64 tick, int id, intptr_t data);
 
 /**
  * @see DBCreateData
@@ -110,7 +97,7 @@ static DBData create_online_user(DBKey key, va_list args)
 	p->account_id = key.i;
 	p->char_server = -1;
 	p->waiting_disconnect = INVALID_TIMER;
-	return db_ptr2data(p);
+	return DB->ptr2data(p);
 }
 
 struct online_login_data* add_online_user(int char_server, int account_id)
@@ -120,7 +107,7 @@ struct online_login_data* add_online_user(int char_server, int account_id)
 	p->char_server = char_server;
 	if( p->waiting_disconnect != INVALID_TIMER )
 	{
-		delete_timer(p->waiting_disconnect, waiting_disconnect_timer);
+		timer->delete(p->waiting_disconnect, waiting_disconnect_timer);
 		p->waiting_disconnect = INVALID_TIMER;
 	}
 	return p;
@@ -133,13 +120,12 @@ void remove_online_user(int account_id)
 	if( p == NULL )
 		return;
 	if( p->waiting_disconnect != INVALID_TIMER )
-		delete_timer(p->waiting_disconnect, waiting_disconnect_timer);
+		timer->delete(p->waiting_disconnect, waiting_disconnect_timer);
 
 	idb_remove(online_db, account_id);
 }
 
-static int waiting_disconnect_timer(int tid, unsigned int tick, int id, intptr_t data)
-{
+static int waiting_disconnect_timer(int tid, int64 tick, int id, intptr_t data) {
 	struct online_login_data* p = (struct online_login_data*)idb_get(online_db, id);
 	if( p != NULL && p->waiting_disconnect == tid && p->account_id == id )
 	{
@@ -155,14 +141,14 @@ static int waiting_disconnect_timer(int tid, unsigned int tick, int id, intptr_t
  */
 static int online_db_setoffline(DBKey key, DBData *data, va_list ap)
 {
-	struct online_login_data* p = db_data2ptr(data);
+	struct online_login_data* p = DB->data2ptr(data);
 	int server = va_arg(ap, int);
 	if( server == -1 )
 	{
 		p->char_server = -1;
 		if( p->waiting_disconnect != INVALID_TIMER )
 		{
-			delete_timer(p->waiting_disconnect, waiting_disconnect_timer);
+			timer->delete(p->waiting_disconnect, waiting_disconnect_timer);
 			p->waiting_disconnect = INVALID_TIMER;
 		}
 	}
@@ -176,14 +162,13 @@ static int online_db_setoffline(DBKey key, DBData *data, va_list ap)
  */
 static int online_data_cleanup_sub(DBKey key, DBData *data, va_list ap)
 {
-	struct online_login_data *character= db_data2ptr(data);
+	struct online_login_data *character= DB->data2ptr(data);
 	if (character->char_server == -2) //Unknown server.. set them offline
 		remove_online_user(character->account_id);
 	return 0;
 }
 
-static int online_data_cleanup(int tid, unsigned int tick, int id, intptr_t data)
-{
+static int online_data_cleanup(int tid, int64 tick, int id, intptr_t data) {
 	online_db->foreach(online_db, online_data_cleanup_sub);
 	return 0;
 } 
@@ -251,8 +236,7 @@ void chrif_on_disconnect(int id)
 //-----------------------------------------------------
 // periodic ip address synchronization
 //-----------------------------------------------------
-static int sync_ip_addresses(int tid, unsigned int tick, int id, intptr_t data)
-{
+static int sync_ip_addresses(int tid, int64 tick, int id, intptr_t data) {
 	uint8 buf[2];
 	ShowInfo("IP Sync in progress...\n");
 	WBUFW(buf,0) = 0x2735;
@@ -361,58 +345,6 @@ int login_lan_config_read(const char *lancfgName)
 	return 0;
 }
 
-//-----------------------
-// Console Command Parser [Wizputer]
-//-----------------------
-int parse_console(const char* command)
-{
-	ShowNotice("Console command: %s\n", command);
-
-	if( strcmpi("shutdown", command) == 0 || strcmpi("exit", command) == 0 || strcmpi("quit", command) == 0 || strcmpi("end", command) == 0 )
-		runflag = 0;
-	else if( strcmpi("alive", command) == 0 || strcmpi("status", command) == 0 )
-		ShowInfo(CL_CYAN"Console: "CL_BOLD"I'm Alive."CL_RESET"\n");
-	else if( strcmpi("help", command) == 0 )
-	{
-		ShowInfo("To shutdown the server:\n");
-		ShowInfo("  'shutdown|exit|quit|end'\n");
-		ShowInfo("To know if server is alive:\n");
-		ShowInfo("  'alive|status'\n");
-		ShowInfo("To create a new account:\n");
-		ShowInfo("  'create'\n");
-	}
-	else
-	{// commands with parameters
-		char cmd[128], params[256];
-
-		if( sscanf(command, "%127s %255[^\r\n]", cmd, params) < 2 )
-		{
-			return 0;
-		}
-
-		if( strcmpi(cmd, "create") == 0 )
-		{
-			char username[NAME_LENGTH], password[NAME_LENGTH], sex;
-
-			if( sscanf(params, "%23s %23s %c", username, password, &sex) < 3 || strnlen(username, sizeof(username)) < 4 || strnlen(password, sizeof(password)) < 1 )
-			{
-				ShowWarning("Console: Invalid parameters for '%s'. Usage: %s <username> <password> <sex:F/M>\n", cmd, cmd);
-				return 0;
-			}
-
-			if( mmo_auth_new(username, password, TOUPPER(sex), "0.0.0.0") != -1 )
-			{
-				ShowError("Console: Account creation failed.\n");
-				return 0;
-			}
-			ShowStatus("Console: Account '%s' created successfully.\n", username);
-		}
-	}
-
-	return 0;
-}
-
-
 //--------------------------------
 // Packet parsing for char-servers
 //--------------------------------
@@ -442,12 +374,17 @@ int parse_fromchar(int fd)
 	ipl = server[id].ip;
 	ip2str(ipl, ip);
 
-	while( RFIFOREST(fd) >= 2 )
-	{
+	while( RFIFOREST(fd) >= 2 ) {
 		uint16 command = RFIFOW(fd,0);
 
-		switch( command )
-		{
+		if( HPM->packetsc[hpParse_FromChar] ) {
+			if( (j = HPM->parse_packets(fd,hpParse_FromChar)) ) {
+				if( j == 1 ) continue;
+				if( j == 2 ) return 0;
+			}
+		}
+		
+		switch( command ) {
 
 		case 0x2712: // request from char-server to authenticate an account
 			if( RFIFOREST(fd) < 23 )
@@ -520,7 +457,7 @@ int parse_fromchar(int fd)
 			{
 				ShowStatus("set users %s : %d\n", server[id].name, users);
 
-				server[id].users = users;
+				server[id].users = (uint16)users;
 			}
 		}
 		break;
@@ -558,29 +495,37 @@ int parse_fromchar(int fd)
 			time_t expiration_time = 0;
 			char email[40] = "";
 			int group_id = 0;
+			uint8 char_slots = 0;
 			char birthdate[10+1] = "";
+			char pincode[4+1] = "\0\0\0\0";
 
 			int account_id = RFIFOL(fd,2);
 			RFIFOSKIP(fd,6);
 
 			if( !accounts->load_num(accounts, &acc, account_id) )
 				ShowNotice("Char-server '%s': account %d NOT found (ip: %s).\n", server[id].name, account_id, ip);
-			else
-			{
+			else {
 				safestrncpy(email, acc.email, sizeof(email));
 				expiration_time = acc.expiration_time;
 				group_id = acc.group_id;
+				char_slots = acc.char_slots;
+				safestrncpy(pincode, acc.pincode, sizeof(pincode));
 				safestrncpy(birthdate, acc.birthdate, sizeof(birthdate));
+				if( strlen(pincode) == 0 )
+					memset(pincode,'\0',sizeof(pincode));
 			}
 
-			WFIFOHEAD(fd,62);
+			WFIFOHEAD(fd,72);
 			WFIFOW(fd,0) = 0x2717;
 			WFIFOL(fd,2) = account_id;
 			safestrncpy((char*)WFIFOP(fd,6), email, 40);
 			WFIFOL(fd,46) = (uint32)expiration_time;
-			WFIFOB(fd,50) = group_id;
-			safestrncpy((char*)WFIFOP(fd,51), birthdate, 10+1);
-			WFIFOSET(fd,62);
+			WFIFOB(fd,50) = (unsigned char)group_id;
+			WFIFOB(fd,51) = char_slots;
+			safestrncpy((char*)WFIFOP(fd,52), birthdate, 10+1);
+			safestrncpy((char*)WFIFOP(fd,63), pincode, 4+1 );
+			WFIFOL(fd,68) = acc.pincode_change;
+			WFIFOSET(fd,72);
 		}
 		break;
 
@@ -858,7 +803,7 @@ int parse_fromchar(int fd)
 					p->char_server = id;
 					if (p->waiting_disconnect != INVALID_TIMER)
 					{
-						delete_timer(p->waiting_disconnect, waiting_disconnect_timer);
+						timer->delete(p->waiting_disconnect, waiting_disconnect_timer);
 						p->waiting_disconnect = INVALID_TIMER;
 					}
 				}
@@ -915,6 +860,41 @@ int parse_fromchar(int fd)
 			RFIFOSKIP(fd,2);
 		break;
 
+		case 0x2738: //Change PIN Code for a account
+			if( RFIFOREST(fd) < 11 )
+				return 0;
+			else {
+				struct mmo_account acc;
+				
+				if( accounts->load_num(accounts, &acc, RFIFOL(fd,2) ) ) {
+					strncpy( acc.pincode, (char*)RFIFOP(fd,6), 5 );
+					acc.pincode_change = ((unsigned int)time( NULL ));
+					accounts->save(accounts, &acc);
+				}
+				RFIFOSKIP(fd,11);
+			}
+			break;
+			
+		case 0x2739: // PIN Code was entered wrong too often
+			if( RFIFOREST(fd) < 6 )
+				return 0;
+			else {
+				struct mmo_account acc;
+				
+				if( accounts->load_num(accounts, &acc, RFIFOL(fd,2) ) ) {
+					struct online_login_data* ld;
+
+					if( ( ld = (struct online_login_data*)idb_get(online_db,acc.account_id) ) == NULL )
+						return 0;
+					
+					login_log( host2ip(acc.last_ip), acc.userid, 100, "PIN Code check failed" );
+				}
+				
+				remove_online_user(acc.account_id);
+				RFIFOSKIP(fd,6);
+			}
+		break;
+				
 		default:
 			ShowError("parse_fromchar: Unknown packet 0x%x from a char-server! Disconnecting!\n", command);
 			set_eof(fd);
@@ -931,13 +911,13 @@ int parse_fromchar(int fd)
 //-------------------------------------
 int mmo_auth_new(const char* userid, const char* pass, const char sex, const char* last_ip) {
 	static int num_regs = 0; // registration counter
-	static unsigned int new_reg_tick = 0;
-	unsigned int tick = gettick();
+	static int64 new_reg_tick = 0;
+	int64 tick = timer->gettick();
 	struct mmo_account acc;
 
 	//Account Registration Flood Protection by [Kevin]
 	if( new_reg_tick == 0 )
-		new_reg_tick = gettick();
+		new_reg_tick = timer->gettick();
 	if( DIFF_TICK(tick, new_reg_tick) < 0 && num_regs >= allowed_regs ) {
 		ShowNotice("Account registration denied (registration limit exceeded)\n");
 		return 3;
@@ -966,7 +946,10 @@ int mmo_auth_new(const char* userid, const char* pass, const char sex, const cha
 	safestrncpy(acc.lastlogin, "0000-00-00 00:00:00", sizeof(acc.lastlogin));
 	safestrncpy(acc.last_ip, last_ip, sizeof(acc.last_ip));
 	safestrncpy(acc.birthdate, "0000-00-00", sizeof(acc.birthdate));
-
+	safestrncpy(acc.pincode, "\0", sizeof(acc.pincode));
+	acc.pincode_change = 0;
+	acc.char_slots = 0;
+	
 	if( !accounts->create(accounts, &acc) )
 		return 0;
 
@@ -1100,11 +1083,11 @@ int mmo_auth(struct login_session_data* sd, bool isServer) {
 
 	// update session data
 	sd->account_id = acc.account_id;
-	sd->login_id1 = rnd();
-	sd->login_id2 = rnd();
+	sd->login_id1 = rnd() + 1;
+	sd->login_id2 = rnd() + 1;
 	safestrncpy(sd->lastlogin, acc.lastlogin, sizeof(sd->lastlogin));
 	sd->sex = acc.sex;
-	sd->group_id = acc.group_id;
+	sd->group_id = (uint8)acc.group_id;
 
 	memcpy(acc.mac_address, sd->mac_address, sizeof(acc.mac_address));
 
@@ -1185,7 +1168,7 @@ void login_auth_ok(struct login_session_data* sd)
 				WBUFL(buf,2) = sd->account_id;
 				charif_sendallwos(-1, buf, 6);
 				if( data->waiting_disconnect == INVALID_TIMER )
-					data->waiting_disconnect = add_timer(gettick()+AUTH_TIMEOUT, waiting_disconnect_timer, sd->account_id, 0);
+					data->waiting_disconnect = timer->add(timer->gettick()+AUTH_TIMEOUT, waiting_disconnect_timer, sd->account_id, 0);
 
 				WFIFOHEAD(fd,3);
 				WFIFOW(fd,0) = 0x81;
@@ -1252,7 +1235,7 @@ void login_auth_ok(struct login_session_data* sd)
 		data = add_online_user(-1, sd->account_id);
 
 		// schedule deletion of this node
-		data->waiting_disconnect = add_timer(gettick()+AUTH_TIMEOUT, waiting_disconnect_timer, sd->account_id, 0);
+		data->waiting_disconnect = timer->add(timer->gettick()+AUTH_TIMEOUT, waiting_disconnect_timer, sd->account_id, 0);
 	}
 }
 
@@ -1296,18 +1279,31 @@ void login_auth_failed(struct login_session_data* sd, int result)
 	if( result == 1 && login_config.dynamic_pass_failure_ban )
 		ipban_log(ip); // log failed password attempt
 
+#if PACKETVER >= 20120000 /* not sure when this started */
+	WFIFOHEAD(fd,26);
+	WFIFOW(fd,0) = 0x83e;
+	WFIFOL(fd,2) = result;
+	if( result != 6 )
+		memset(WFIFOP(fd,6), '\0', 20);
+	else { // 6 = Your are Prohibited to log in until %s
+		struct mmo_account acc;
+		time_t unban_time = ( accounts->load_str(accounts, &acc, sd->userid) ) ? acc.unban_time : 0;
+		timestamp2string((char*)WFIFOP(fd,6), 20, unban_time, login_config.date_format);
+	}
+	WFIFOSET(fd,26);
+#else
 	WFIFOHEAD(fd,23);
 	WFIFOW(fd,0) = 0x6a;
 	WFIFOB(fd,2) = (uint8)result;
 	if( result != 6 )
 		memset(WFIFOP(fd,3), '\0', 20);
-	else
-	{// 6 = Your are Prohibited to log in until %s
+	else { // 6 = Your are Prohibited to log in until %s
 		struct mmo_account acc;
 		time_t unban_time = ( accounts->load_str(accounts, &acc, sd->userid) ) ? acc.unban_time : 0;
 		timestamp2string((char*)WFIFOP(fd,3), 20, unban_time, login_config.date_format);
 	}
 	WFIFOSET(fd,23);
+#endif
 }
 
 
@@ -1351,12 +1347,17 @@ int parse_login(int fd)
 		sd->fd = fd;
 	}
 
-	while( RFIFOREST(fd) >= 2 )
-	{
+	while( RFIFOREST(fd) >= 2 ) {
 		uint16 command = RFIFOW(fd,0);
 
-		switch( command )
-		{
+		if( HPM->packetsc[hpParse_Login] ) {
+			if( (result = HPM->parse_packets(fd,hpParse_Login)) ) {
+				if( result == 1 ) continue;
+				if( result == 2 ) return 0;
+			}
+		}
+		
+		switch( command ) {
 
 		case 0x0200:		// New alive packet: structure: 0x200 <account.userid>.24B. used to verify if client is always alive.
 			if (RFIFOREST(fd) < 26)
@@ -1399,11 +1400,11 @@ int parse_login(int fd)
 		{
 			uint32 version;
 			char username[NAME_LENGTH];
-			char password[NAME_LENGTH];
+			char password[PASSWD_LEN];
 			unsigned char passhash[16];
 			uint8 clienttype;
 			bool israwpass = (command==0x0064 || command==0x0277 || command==0x02b0 || command == 0x0825);
-
+			
 			// Shinryo: For the time being, just use token as password.
 			if(command == 0x0825)
 			{
@@ -1413,15 +1414,14 @@ int parse_login(int fd)
 				size_t uTokenLen = RFIFOREST(fd) - 0x5C;
 
 				version = RFIFOL(fd,4);
-
-				if(uAccLen > NAME_LENGTH - 1 || uAccLen <= 0 || uTokenLen > NAME_LENGTH - 1  || uTokenLen <= 0)
-				{
+				
+				if(uAccLen <= 0 || uTokenLen <= 0) {
 					login_auth_failed(sd, 3);
 					return 0;
 				}
 
-				safestrncpy(username, accname, uAccLen + 1);
-				safestrncpy(password, token, uTokenLen + 1);
+				safestrncpy(username, accname, NAME_LENGTH);
+				safestrncpy(password, token, min(uTokenLen+1, PASSWD_LEN)); // Variable-length field, don't copy more than necessary
 				clienttype = RFIFOB(fd, 8);
 			}
 			else
@@ -1447,7 +1447,7 @@ int parse_login(int fd)
 			if( israwpass )
 			{
 				ShowStatus("Request for connection of %s (ip: %s).\n", sd->userid, ip);
-				safestrncpy(sd->passwd, password, NAME_LENGTH);
+				safestrncpy(sd->passwd, password, PASSWD_LEN);
 				if( login_config.use_md5_passwds )
 					MD5_String(sd->passwd, sd->passwd);
 				sd->passwdenc = 0;
@@ -1464,7 +1464,7 @@ int parse_login(int fd)
 				login_auth_failed(sd, 3); // send "rejected from server"
 				return 0;
 			}
-
+			
 			result = mmo_auth(sd, false);
 
 			if( result == -1 )
@@ -1599,7 +1599,6 @@ void login_set_defaults()
 	login_config.ip_sync_interval = 0;
 	login_config.log_login = true;
 	safestrncpy(login_config.date_format, "%Y-%m-%d %H:%M:%S", sizeof(login_config.date_format));
-	login_config.console = false;
 	login_config.new_account_flag = true;
 	login_config.new_acc_length_limit = true;
 	login_config.use_md5_passwds = false;
@@ -1615,7 +1614,6 @@ void login_set_defaults()
 	login_config.dynamic_pass_failure_ban_duration = 5;
 	login_config.use_dnsbl = false;
 	safestrncpy(login_config.dnsbl_servs, "", sizeof(login_config.dnsbl_servs));
-	safestrncpy(login_config.account_engine, "auto", sizeof(login_config.account_engine));
 
 	login_config.client_hash_check = 0;
 	login_config.client_hash_nodes = NULL;
@@ -1649,10 +1647,11 @@ int login_config_read(const char* cfgName)
 				ShowInfo("Console Silent Setting: %d\n", atoi(w2));
 		}
 		else if( !strcmpi(w1, "bind_ip") ) {
-			char ip_str[16];
 			login_config.login_ip = host2ip(w2);
-			if( login_config.login_ip )
+			if( login_config.login_ip ) {
+				char ip_str[16];
 				ShowStatus("Login server binding IP address : %s -> %s\n", w2, ip2str(login_config.login_ip, ip_str));
+			}
 		}
 		else if( !strcmpi(w1, "login_port") ) {
 			login_config.login_port = (uint16)atoi(w2);
@@ -1678,8 +1677,6 @@ int login_config_read(const char* cfgName)
 			login_config.min_group_id_to_connect = atoi(w2);
 		else if(!strcmpi(w1, "date_format"))
 			safestrncpy(login_config.date_format, w2, sizeof(login_config.date_format));
-		else if(!strcmpi(w1, "console"))
-			login_config.console = (bool)config_switch(w2);
 		else if(!strcmpi(w1, "allowed_regs")) //account flood protection system
 			allowed_regs = atoi(w2);
 		else if(!strcmpi(w1, "time_allowed"))
@@ -1697,10 +1694,10 @@ int login_config_read(const char* cfgName)
 		else if(!strcmpi(w1, "client_hash")) {
 			int group = 0;
 			char md5[33];
-			int i;
 
 			if (sscanf(w2, "%d, %32s", &group, md5) == 2) {
 				struct client_hash_node *nnode;
+				int i;
 				CREATE(nnode, struct client_hash_node, 1);
 
 				for (i = 0; i < 32; i += 2) {
@@ -1723,18 +1720,10 @@ int login_config_read(const char* cfgName)
 		else if(!strcmpi(w1, "import"))
 			login_config_read(w2);
 		else
-		if(!strcmpi(w1, "account.engine"))
-			safestrncpy(login_config.account_engine, w2, sizeof(login_config.account_engine));
-		else
-		{// try the account engines
-			int i;
-			for( i = 0; account_engines[i].constructor; ++i )
-			{
-				AccountDB* db = account_engines[i].db;
-				if( db && db->set_property(db, w1, w2) )
-					break;
-			}
-			// try others
+		{
+			AccountDB* db = account_engine[0].db;
+			if( db )
+				db->set_property(db, w1, w2);
 			ipban_config_read(w1, w2);
 			loginlog_config_read(w1, w2);
 		}
@@ -1742,28 +1731,6 @@ int login_config_read(const char* cfgName)
 	fclose(fp);
 	ShowInfo("Finished reading %s.\n", cfgName);
 	return 0;
-}
-
-/// Get the engine selected in the config settings.
-/// Updates the config setting with the selected engine if 'auto'.
-static AccountDB* get_account_engine(void)
-{
-	int i;
-	bool get_first = (strcmp(login_config.account_engine,"auto") == 0);
-
-	for( i = 0; account_engines[i].constructor; ++i )
-	{
-		char name[sizeof(login_config.account_engine)];
-		AccountDB* db = account_engines[i].db;
-		if( db && db->get_property(db, "engine.name", name, sizeof(name)) &&
-			(get_first || strcmp(name, login_config.account_engine) == 0) )
-		{
-			if( get_first )
-				safestrncpy(login_config.account_engine, name, sizeof(login_config.account_engine));
-			return db;
-		}
-	}
-	return NULL;
 }
 
 //--------------------------------------
@@ -1774,15 +1741,22 @@ void do_final(void)
 	int i;
 	struct client_hash_node *hn = login_config.client_hash_nodes;
 
-	while (hn)
-	{
+	ShowStatus("Terminating...\n");
+	
+	HPM->event(HPET_FINAL);
+	
+	while (hn) {
 		struct client_hash_node *tmp = hn;
 		hn = hn->next;
 		aFree(tmp);
 	}
 
+<<<<<<< HEAD
 	login_log(0, "login server", 100, "login server shutdown", "");
 	ShowStatus("Terminating...\n");
+=======
+	login_log(0, "login server", 100, "login server shutdown");
+>>>>>>> 566529c819bcf9aeb1bd3a4a691c443c2b88d076
 
 	harm_funcs->login_final();
 
@@ -1791,16 +1765,12 @@ void do_final(void)
 
 	ipban_final();
 
-	for( i = 0; account_engines[i].constructor; ++i )
-	{// destroy all account engines
-		AccountDB* db = account_engines[i].db;
-		if( db )
-		{
-			db->destroy(db);
-			account_engines[i].db = NULL;
-		}
+	if( account_engine[0].db )
+	{// destroy account engine
+		account_engine[0].db->destroy(account_engine[0].db);
+		account_engine[0].db = NULL;
 	}
-	accounts = NULL; // destroyed in account_engines
+	accounts = NULL; // destroyed in account_engine
 	online_db->destroy(online_db, NULL);
 	auth_db->destroy(auth_db, NULL);
 	
@@ -1841,9 +1811,8 @@ void do_abort(void)
 {
 }
 
-void set_server_type(void)
-{
-	SERVER_TYPE = ATHENA_SERVER_LOGIN;
+void set_server_type(void) {
+	SERVER_TYPE = SERVER_TYPE_LOGIN;
 }
 
 
@@ -1871,9 +1840,8 @@ int do_init(int argc, char** argv)
 {
 	int i;
 
-	// intialize engines (to accept config settings)
-	for( i = 0; account_engines[i].constructor; ++i )
-		account_engines[i].db = account_engines[i].constructor();
+	// intialize engine (to accept config settings)
+	account_engine[0].db = account_engine[0].constructor();
 
 	// read login-server configuration
 	login_set_defaults();
@@ -1881,7 +1849,7 @@ int do_init(int argc, char** argv)
 	login_lan_config_read((argc > 2) ? argv[2] : LAN_CONF_NAME);
 
 	rnd_init();
-	
+		
 	for( i = 0; i < ARRAYLENGTH(server); ++i )
 		chrif_server_init(i);
 
@@ -1891,10 +1859,10 @@ int do_init(int argc, char** argv)
 
 	// initialize static and dynamic ipban system
 	ipban_init();
-
+	
 	// Online user database init
 	online_db = idb_alloc(DB_OPT_RELEASE_DATA);
-	add_timer_func_list(waiting_disconnect_timer, "waiting_disconnect_timer");
+	timer->add_func_list(waiting_disconnect_timer, "waiting_disconnect_timer");
 
 	// Interserver auth init
 	auth_db = idb_alloc(DB_OPT_RELEASE_DATA);
@@ -1903,32 +1871,38 @@ int do_init(int argc, char** argv)
 	set_defaultparse(parse_login);
 
 	// every 10 minutes cleanup online account db.
-	add_timer_func_list(online_data_cleanup, "online_data_cleanup");
-	add_timer_interval(gettick() + 600*1000, online_data_cleanup, 0, 0, 600*1000);
+	timer->add_func_list(online_data_cleanup, "online_data_cleanup");
+	timer->add_interval(timer->gettick() + 600*1000, online_data_cleanup, 0, 0, 600*1000);
 
 	// add timer to detect ip address change and perform update
 	if (login_config.ip_sync_interval) {
-		add_timer_func_list(sync_ip_addresses, "sync_ip_addresses");
-		add_timer_interval(gettick() + login_config.ip_sync_interval, sync_ip_addresses, 0, 0, login_config.ip_sync_interval);
+		timer->add_func_list(sync_ip_addresses, "sync_ip_addresses");
+		timer->add_interval(timer->gettick() + login_config.ip_sync_interval, sync_ip_addresses, 0, 0, login_config.ip_sync_interval);
 	}
 
 	// Account database init
-	accounts = get_account_engine();
+	accounts = account_engine[0].db;
 	if( accounts == NULL ) {
-		ShowFatalError("do_init: account engine '%s' not found.\n", login_config.account_engine);
+		ShowFatalError("do_init: account engine 'sql' not found.\n");
 		exit(EXIT_FAILURE);
 	} else {
 
 		if(!accounts->init(accounts)) {
-			ShowFatalError("do_init: Failed to initialize account engine '%s'.\n", login_config.account_engine);
+			ShowFatalError("do_init: Failed to initialize account engine 'sql'.\n");
 			exit(EXIT_FAILURE);
 		}
 	}
 
-	if( login_config.console )
-	{
-		//##TODO invoke a CONSOLE_START plugin event
+	HPM->share(account_db_sql_up(accounts),"sql_handle");
+	HPM->config_read();
+	HPM->event(HPET_INIT);
+	
+	// server port open & binding	
+	if( (login_fd = make_listen_bind(login_config.login_ip,login_config.login_port)) == -1 ) {
+		ShowFatalError("Failed to bind to port '"CL_WHITE"%d"CL_RESET"'\n",login_config.login_port);
+		exit(EXIT_FAILURE);
 	}
+<<<<<<< HEAD
 
 	// Initialize Harmony
 	ea_funcs->ea_is_mac_banned = check_mac_banned;
@@ -1937,15 +1911,23 @@ int do_init(int argc, char** argv)
 
 	// server port open & binding
 	login_fd = make_listen_bind(login_config.login_ip, login_config.login_port);
+=======
+>>>>>>> 566529c819bcf9aeb1bd3a4a691c443c2b88d076
 	
-	if( runflag != CORE_ST_STOP )
-	{
+	if( runflag != CORE_ST_STOP ) {
 		shutdown_callback = do_shutdown;
 		runflag = LOGINSERVER_ST_RUNNING;
 	}
-
+	
 	ShowStatus("The login-server is "CL_GREEN"ready"CL_RESET" (Server is listening on the port %u).\n\n", login_config.login_port);
+<<<<<<< HEAD
 	login_log(0, "login server", 100, "login server started", "");
 
+=======
+	login_log(0, "login server", 100, "login server started");
+	
+	HPM->event(HPET_READY);
+	
+>>>>>>> 566529c819bcf9aeb1bd3a4a691c443c2b88d076
 	return 0;
 }

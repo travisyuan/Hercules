@@ -1,16 +1,19 @@
-// Copyright (c) rAthena Dev Teams - Licensed under GNU GPL
-// For more information, see LICENCE in the main folder
+// Copyright (c) Hercules Dev Team, licensed under GNU GPL.
+// See the LICENSE file
+// Portions Copyright (c) Athena Dev Teams
 #ifndef _CONFIG_RENEWAL_H_
 #define _CONFIG_RENEWAL_H_
 
 /**
- * rAthena configuration file (http://rathena.org)
- * For detailed guidance on these check http://rathena.org/wiki/SRC/config/
+ * Hercules configuration file (http://hercules.ws)
+ * For detailed guidance on these check http://hercules.ws/wiki/SRC/config/
  **/
 
 /**
  * @INFO: This file holds general-purpose renewal settings, for class-specific ones check /src/config/classes folder
  **/
+
+#ifndef DISABLE_RENEWAL
 
 /// game renewal server mode
 /// (disable by commenting the line)
@@ -67,5 +70,7 @@
 /// - there is a change in how skills/items give ASPD
 /// - some skill/item ASPD bonuses won't stack
 #define RENEWAL_ASPD
+
+#endif // DISABLE_RENEWAL
 
 #endif // _CONFIG_RENEWAL_H_

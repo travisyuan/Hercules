@@ -1,17 +1,22 @@
-//===== rAthena Script =======================================
+//===== Hercules Script ======================================
 //= Hunting Missions
 //===== By: ==================================================
 //= Euphy
 //===== Current Version: =====================================
-//= 1.2b
-//===== Compatible With: ===================================== 
-//= rAthena SVN
+//= 1.3a
 //===== Description: =========================================
 //= Random hunting missions.
 //= Rewards are based on quest difficulty.
+//===== Additional Comments: =================================
+//= 1.0 Initial script.
+//= 1.1 Small improvements and fixes.
+//= 1.2 Added party support and replaced blacklists with an
+//=     SQL query, both thanks to AnnieRuru.
+//= 1.3 Re-added a blacklist adapted for the SQL query.
+//= 1.3a Added mission reset options.
 //============================================================
 
-prontera,152,187,6	script	Hunting Missions	951,{
+prontera,152,187,6	script	Hunting Missions	4_F_EDEN_MASTER,{
 function Chk; function Cm;
 	mes "[Hunting Missions]";
 	mes "Hello, "+strcharinfo(0)+"!";
@@ -50,7 +55,7 @@ function Chk; function Cm;
 			close;
 		}
 		mes "You must hunt:";
-		query_sql("SELECT ID FROM mob_db WHERE left(Sprite, 4) != 'meta' AND left(Sprite, 2) != 'E_' AND ~Mode & 32 AND EXP > 0 AND MVP1id = 0 AND DropCardid > 4000 AND DropCardid < 5000 AND ID < 2000 ORDER BY rand() LIMIT "+.Quests, .@mob);
+		query_sql("SELECT ID FROM `mob_db` WHERE left(Sprite, 4) != 'meta' AND left(Sprite, 2) != 'E_' AND ~Mode & 32 AND EXP > 0 AND MVP1id = 0 AND DropCardid > 4000 AND DropCardid < 5000 AND ID < 2000 AND instr('"+.Blacklist$+"',ID) = 0 ORDER BY rand() LIMIT "+.Quests, .@mob);
 		for (set .@i,0; .@i<.Quests; set .@i,.@i+1) {
 			setd "Mission"+.@i, .@mob[.@i];
 			setd "Mission"+.@i +"_",0;
@@ -72,10 +77,24 @@ function Chk; function Cm;
 		mes "[Hunting Missions]";
 		mes "Do you really want to";
 		mes "abandon your mission?";
-		if (.Delay) mes "Your delay time will not be reset.";
+		if (.Reset < 0 && .Delay)
+			mes "Your delay time will not be reset.";
+		else if (.Reset > 0)
+			mes "It will cost "+Cm(.Reset)+" Zeny.";
 		next;
 		switch(select(" ~ Abandon...: ~ ^777777Cancel^000000")) {
 		case 1:
+			if (.Reset > 0) {
+				if (Zeny < .Reset) {
+					mes "[Hunting Missions]";
+					mes "You don't have enough";
+					mes "Zeny to drop this mission.";
+					emotion e_sry;
+					close;
+				}
+				set Zeny, Zeny-.Reset;
+				emotion e_cash;
+			}
 			mes "[Hunting Missions]";
 			mes "Alright, I've dropped";
 			mes "your current mission.";
@@ -85,7 +104,7 @@ function Chk; function Cm;
 				setd "Mission"+.@i+"_",0;
 			}
 			set #Mission_Count,0;
-			if (.Delay) set #Mission_Delay, gettimetick(2)+(.Delay*3600);
+			if (.Reset < 0 && .Delay) set #Mission_Delay, gettimetick(2)+(.Delay*3600);
 			close;
 		case 2:
 			mes "[Hunting Missions]";
@@ -262,12 +281,19 @@ OnInit:
 	set .Delay,12;		// Quest delay, in hours (0 to disable).
 	set .Quests,4;		// Number of subquests per mission (increases rewards).
 	set .Party,3;		// Party options: 0 (exclude party kills), 1 (include party kills), 2 (same map only), 3 (screen area only)
+	set .Reset,-1;		// Reset options: -1 (abandoning mission sets delay time), 0 (no delay time), [Zeny] (cost to abandon mission, no delay time)
 	setarray .Count[0],	// Min and max monsters per subquest (increases rewards).
 		40,70;
 	setarray .Modifier[0],	// Multipliers for Base Exp, Job Exp, and Zeny rewards.
 		getbattleflag("base_exp_rate")/100,getbattleflag("job_exp_rate")/100,60;
 	setarray .Shop[0],	// Reward items: <ID>,<point cost> (about 10~20 points per hunt).
 		512,1,513,1,514,1,538,5,539,5,558,10,561,10;
+	set .Blacklist$,	// Blacklisted mob IDs.
+		"1062,1088,1183,1186,1200,1212,1220,1221,1234,1235,"+
+		"1244,1245,1250,1268,1290,1293,1294,1296,1298,1299,"+
+		"1300,1301,1303,1304,1305,1306,1308,1309,1311,1313,"+
+		"1515,1588,1618,1676,1677,1678,1679,1796,1797,1974,"+
+		"1975,1976,1977,1978,1979";
 
 	npcshopdelitem "mission_shop",512;
 	for(set .@i,0; .@i<getarraysize(.Shop); set .@i,.@i+2)

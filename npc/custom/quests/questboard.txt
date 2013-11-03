@@ -1,14 +1,12 @@
-//===== rAthena Script =======================================
+//===== Hercules Script ======================================
 //= tr0n's Questboard
 //===== By: ==================================================
 //= tr0n
 //===== Current Version: =====================================
 //= 1.4.4
-//===== Compatible With: ===================================== 
-//= rAthena SVN
 //===== Description: =========================================
 //= Easily add collection and hunting quests.
-//===== Additional Comments: =================================  
+//===== Additional Comments: =================================
 // 1.0.0 Release
 // 1.1.0 Added zeny reward
 // 1.2.0 Rewrote checkmob and killcounter
@@ -17,7 +15,7 @@
 // 1.4.4 Added Quest delay
 //============================================================
 
-prontera,129,215,5	script	Questboard	857,{
+prontera,129,215,5	script	Questboard	4_BOARD3,{
 		
 	if(c_run==1){
 		mes "[^FF7700Questboard^000000]";

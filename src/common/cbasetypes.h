@@ -240,6 +240,7 @@ typedef uintptr_t uintptr;
 #endif
 #if defined(_MSC_VER) && _MSC_VER > 1200
 #define strtoull			_strtoui64
+#define strtoll				_strtoi64
 #endif
 
 // keyword replacement
@@ -261,9 +262,21 @@ typedef uintptr_t uintptr;
 //////////////////////////////
 
 // boolean types for C
+#if !defined(_MSC_VER) || _MSC_VER >= 1800
+// MSVC doesn't have stdbool.h yet as of Visual Studio 2012 (MSVC version 17.00)
+// but it will support it in Visual Studio 2013 (MSVC version 18.00)
+// http://blogs.msdn.com/b/vcblog/archive/2013/07/19/c99-library-support-in-visual-studio-2013.aspx
+// GCC and Clang are assumed to be C99 compliant
+#include <stdbool.h> // bool, true, false, __bool_true_false_are_defined
+#endif // ! defined(_MSC_VER) || _MSC_VER >= 1800
+
+#ifndef __bool_true_false_are_defined
+// If stdbool.h is not available or does not define this
 typedef char bool;
 #define false	(1==0)
 #define true	(1==1)
+#define __bool_true_false_are_defined
+#endif // __bool_true_false_are_defined
 
 //////////////////////////////
 #endif // not __cplusplus
@@ -281,6 +294,26 @@ typedef char bool;
 //#define swap(a,b) ((a == b) || ((a ^= b), (b ^= a), (a ^= b)))
 // Avoid "value computed is not used" warning and generates the same assembly code
 #define swap(a,b) if (a != b) ((a ^= b), (b ^= a), (a ^= b))
+#if 0 //to be activated soon, more tests needed on how VS works with the macro above
+#ifdef WIN32
+#undef swap
+#define swap(a,b)__asm	\
+{	\
+	__asm mov		eax, dword ptr [a]	\
+	__asm cmp		eax, dword ptr [b]	\
+	__asm je		_ret	\
+	__asm xor		eax, dword ptr [b]	\
+	__asm mov		dword ptr [a], eax	\
+	__asm xor		eax, dword ptr [b]	\
+	__asm mov		dword ptr [b], eax	\
+	__asm xor		eax, dword ptr [a]	\
+	__asm mov		dword ptr [a], eax	\
+	__asm _ret:	\
+}
+#endif
+#endif
+
+#define swap_ptr(a,b) if ((a) != (b)) ((a) = (void*)((intptr_t)(a) ^ (intptr_t)(b)), (b) = (void*)((intptr_t)(a) ^ (intptr_t)(b)), (a) = (void*)((intptr_t)(a) ^ (intptr_t)(b)))
 
 #ifndef max
 #define max(a,b) (((a) > (b)) ? (a) : (b))

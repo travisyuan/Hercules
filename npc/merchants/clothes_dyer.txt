@@ -1,12 +1,12 @@
-﻿//===== Hercules Script ======================================
+//===== Hercules Script ======================================
 //= Clothes Dyer
-//===== By: ================================================== 
+//===== By: ==================================================
 //= Usnul
-//===== Current Version: ===================================== 
+//===== Current Version: =====================================
 //= 2.5
-//===== Description: ========================================= 
+//===== Description: =========================================
 //= Clothes dyer with standard palletes
-//===== Additional Comments: ================================= 
+//===== Additional Comments: =================================
 //= Fully working
 //= 2.1 Shortened some labels to make this script loading,
 //= Added Black+White Colors desc [Lupus]
@@ -19,7 +19,7 @@
 //= 2.5 Optimized. [Euphy]
 //============================================================
 
-prt_in,284,168,2	script	Dyer Ginedin Rephere	55,{
+prt_in,284,168,2	script	Dyer Ginedin Rephere	1_M_JOBTESTER,{
 function Dyes;
 
 	set .@EnableDyes,1;	// Disable (set to 0) if palettes cause errors [see note v2.4]

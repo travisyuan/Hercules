@@ -1,20 +1,18 @@
-//===== rAthena Script ======================================= 
+//===== Hercules Script ======================================
 //= Wizard Skills Quests
-//===== By: ================================================== 
+//===== By: ==================================================
 //= Lupus, Reddozen
-//===== Current Version: ===================================== 
+//===== Current Version: =====================================
 //= 1.5
-//===== Compatible With: ===================================== 
-//= rAthena SVN
-//===== Description: ========================================= 
-//= [Aegis Conversion]
+//===== Description: =========================================
+//= [Official Conversion]
 //= Quests for skills: Sight Blaster
-//===== Additional Comments: ================================= 
+//===== Additional Comments: =================================
 //= 1.4 Rescripted to Aegis 10.3 stadards. [L0ne_W0lf]
 //= 1.5 Replaced effect numerics with constants. [L0ne_W0lf]
 //============================================================
 
-gef_tower,115,36,4	script	Meow#q_wiz	876,{
+gef_tower,115,36,4	script	Meow#q_wiz	4_CAT,{
 	if (BaseJob == Job_Wizard) {
 		if (WIZ_SK == 100) {
 			if (getskilllv("WZ_SIGHTBLASTER") == 0) {
@@ -353,7 +351,7 @@ gef_tower,115,36,4	script	Meow#q_wiz	876,{
 	}
 }
 
-prt_in,82,98,3	script	Simon Mayace#q_wiz	46,{
+prt_in,82,98,3	script	Simon Mayace#q_wiz	1_ETC_01,{
 	if (WIZ_SK == 1) {
 		mes "[Simon]";
 		mes "Ah, you must be a skilled";
@@ -434,9 +432,9 @@ prt_in,82,98,3	script	Simon Mayace#q_wiz	46,{
 	}
 }
 
-//============================================================ 
+//============================================================
 // Old changelog
-//============================================================ 
+//============================================================
 //= 1.0 for fully working skills only [Lupus]
 //= 1.1 Added more new skill quests for more classes [Lupus]
 //= Somehow eA engine doesn't let you keep learn't skill V_V'

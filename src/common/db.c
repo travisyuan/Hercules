@@ -47,6 +47,7 @@
  *  - create a db that organizes itself by splaying
  *
  *  HISTORY:
+ *    2013/04/27 - Added ERS to speed up iterator memory allocation [Ind/Hercules]
  *    2012/03/09 - Added enum for data types (int, uint, void*)
  *    2008/02/19 - Fixed db_obj_get not handling deleted entries correctly.
  *    2007/11/09 - Added an iterator to the database.
@@ -319,6 +320,10 @@ static struct db_stats {
 #define DB_COUNTSTAT(token)
 #endif /* !defined(DB_ENABLE_STATS) */
 
+/* [Ind/Hercules] */
+struct eri *db_iterator_ers;
+struct eri *db_alloc_ers;
+
 /*****************************************************************************\
  *  (2) Section of private functions used by the database system.            *
  *  db_rotate_left     - Rotate a tree node to the left.                     *
@@ -505,7 +510,7 @@ static void db_rebalance_erase(DBNode node, DBNode *root)
 			// put the right of 'node' in 'y' 
 			y->right = node->right;
 			node->right->parent = y;
-		// 'y' is a direct child of 'node'
+			// 'y' is a direct child of 'node'
 		} else {
 			x_parent = y;
 		}
@@ -1366,7 +1371,7 @@ void dbit_obj_destroy(DBIterator* self)
 	// unlock the database
 	db_free_unlock(it->db);
 	// free iterator
-	aFree(self);
+	ers_free(db_iterator_ers,self);
 }
 
 /**
@@ -1384,7 +1389,7 @@ static DBIterator* db_obj_iterator(DBMap* self)
 	DBIterator_impl* it;
 
 	DB_COUNTSTAT(db_iterator);
-	CREATE(it, struct DBIterator_impl, 1);
+	it = ers_alloc(db_iterator_ers, struct DBIterator_impl);
 	/* Interface of the iterator **/
 	it->vtable.first   = dbit_obj_first;
 	it->vtable.last    = dbit_obj_last;
@@ -1786,9 +1791,9 @@ static int db_obj_put(DBMap* self, DBKey key, DBData data, DBData *out_data)
 			if (node->deleted) {
 				db_free_remove(db, node);
 			} else {
-				db->release(node->key, node->data, DB_RELEASE_BOTH);
 				if (out_data)
 					memcpy(out_data, &node->data, sizeof(*out_data));
+				db->release(node->key, node->data, DB_RELEASE_BOTH);
 				retval = 1;
 			}
 			break;
@@ -2127,7 +2132,7 @@ static int db_obj_vdestroy(DBMap* self, DBApply func, va_list args)
 	db->free_max = 0;
 	ers_destroy(db->nodes);
 	db_free_unlock(db);
-	aFree(db);
+	ers_free(db_alloc_ers, db);
 	return sum;
 }
 
@@ -2344,7 +2349,7 @@ DBHasher db_default_hash(DBType type)
 DBReleaser db_default_release(DBType type, DBOptions options)
 {
 	DB_COUNTSTAT(db_default_release);
-	options = db_fix_options(type, options);
+	options = DB->fix_options(type, options);
 	if (options&DB_OPT_RELEASE_DATA) { // Release data, what about the key?
 		if (options&(DB_OPT_DUP_KEY|DB_OPT_RELEASE_KEY))
 			return &db_release_both; // Release both key and data
@@ -2395,10 +2400,10 @@ DBReleaser db_custom_release(DBRelease which)
  * @see #DBMap_impl
  * @see #db_fix_options(DBType,DBOptions)
  */
-DBMap* db_alloc(const char *file, int line, DBType type, DBOptions options, unsigned short maxlen)
-{
+DBMap* db_alloc(const char *file, const char *func, int line, DBType type, DBOptions options, unsigned short maxlen) {
 	DBMap_impl* db;
 	unsigned int i;
+	char ers_name[50];
 
 #ifdef DB_ENABLE_STATS
 	DB_COUNTSTAT(db_alloc);
@@ -2409,9 +2414,9 @@ DBMap* db_alloc(const char *file, int line, DBType type, DBOptions options, unsi
 		case DB_ISTRING: DB_COUNTSTAT(db_istring_alloc); break;
 	}
 #endif /* DB_ENABLE_STATS */
-	CREATE(db, struct DBMap_impl, 1);
+	db = ers_alloc(db_alloc_ers, struct DBMap_impl);
 
-	options = db_fix_options(type, options);
+	options = DB->fix_options(type, options);
 	/* Interface of the database */
 	db->vtable.iterator = db_obj_iterator;
 	db->vtable.exists   = db_obj_exists;
@@ -2440,10 +2445,11 @@ DBMap* db_alloc(const char *file, int line, DBType type, DBOptions options, unsi
 	db->free_max = 0;
 	db->free_lock = 0;
 	/* Other */
-	db->nodes = ers_new(sizeof(struct dbn),"db.c::db_alloc",ERS_OPT_NONE);
-	db->cmp = db_default_cmp(type);
-	db->hash = db_default_hash(type);
-	db->release = db_default_release(type, options);
+	snprintf(ers_name, 50, "db_alloc:nodes:%s:%s:%d",func,file,line);
+	db->nodes = ers_new(sizeof(struct dbn),ers_name,ERS_OPT_WAIT|ERS_OPT_FREE_NAME);
+	db->cmp = DB->default_cmp(type);
+	db->hash = DB->default_hash(type);
+	db->release = DB->default_release(type, options);
 	for (i = 0; i < HASH_SIZE; i++)
 		db->ht[i] = NULL;
 	db->cache = NULL;
@@ -2602,8 +2608,10 @@ void* db_data2ptr(DBData *data)
  * @public
  * @see #db_final(void)
  */
-void db_init(void)
-{
+void db_init(void) {
+	db_iterator_ers = ers_new(sizeof(struct DBIterator_impl),"db.c::db_iterator_ers",ERS_OPT_NONE);
+	db_alloc_ers = ers_new(sizeof(struct DBMap_impl),"db.c::db_alloc_ers",ERS_OPT_NONE);
+	ers_chunk_size(db_alloc_ers, 50);
 	DB_COUNTSTAT(db_init);
 }
 
@@ -2696,6 +2704,8 @@ void db_final(void)
 			stats.db_data2ui,         stats.db_data2ptr,
 			stats.db_init,            stats.db_final);
 #endif /* DB_ENABLE_STATS */
+	ers_destroy(db_iterator_ers);
+	ers_destroy(db_alloc_ers);
 }
 
 // Link DB System - jAthena
@@ -2720,18 +2730,24 @@ void linkdb_insert( struct linkdb_node** head, void *key, void* data)
 	node->data = data;
 }
 
-void linkdb_foreach( struct linkdb_node** head, LinkDBFunc func, ...  )
-{
+void linkdb_vforeach( struct linkdb_node** head, LinkDBFunc func, va_list ap) {
 	struct linkdb_node *node;
 	if( head == NULL ) return;
 	node = *head;
 	while ( node ) {
-		va_list args;
-		va_start(args, func);
-		func( node->key, node->data, args );
-		va_end(args);
+		va_list argscopy;
+		va_copy(argscopy, ap);
+		func(node->key, node->data, argscopy);
+		va_end(argscopy);
 		node = node->next;
 	}
+}
+
+void linkdb_foreach( struct linkdb_node** head, LinkDBFunc func, ...) {
+	va_list ap;
+	va_start(ap, func);
+	linkdb_vforeach(head, func, ap);
+	va_end(ap);
 }
 
 void* linkdb_search( struct linkdb_node** head, void *key)
@@ -2819,4 +2835,24 @@ void linkdb_final( struct linkdb_node** head )
 		node = node2;
 	}
 	*head = NULL;
+}
+void db_defaults(void) {
+	DB = &DB_s;
+	DB->alloc = db_alloc;
+	DB->custom_release = db_custom_release;
+	DB->data2i = db_data2i;
+	DB->data2ptr = db_data2ptr;
+	DB->data2ui = db_data2ui;
+	DB->default_cmp = db_default_cmp;
+	DB->default_hash = db_default_hash;
+	DB->default_release = db_default_release;
+	DB->final = db_final;
+	DB->fix_options = db_fix_options;
+	DB->i2data = db_i2data;
+	DB->i2key = db_i2key;
+	DB->init = db_init;
+	DB->ptr2data = db_ptr2data;
+	DB->str2key = db_str2key;
+	DB->ui2data = db_ui2data;
+	DB->ui2key = db_ui2key;
 }

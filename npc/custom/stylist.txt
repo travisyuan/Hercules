@@ -1,18 +1,16 @@
-//===== rAthena Script =======================================
+//===== Hercules Script ======================================
 //= Stylist
 //===== By: ==================================================
 //= Euphy
 //===== Current Version: =====================================
 //= 1.1
-//===== Compatible With: =====================================
-//= rAthena SVN
 //===== Description: =========================================
 //= Changes your hair style, hair color, and cloth color.
-//===== Additional Comments: =================================  
+//===== Additional Comments: =================================
 //= 1.1 Switched to 'getbattleflag', credits to Saithis. [Euphy]
 //============================================================
 
-prontera,170,180,1	script	Stylist#custom_stylist	122,{
+prontera,170,180,1	script	Stylist#custom_stylist	2_M_DYEINGER,{
 
 	setarray .@Styles[1],getbattleflag("max_cloth_color"),getbattleflag("max_hair_style"),getbattleflag("max_hair_color");
 	setarray .@Look[1],7,1,6;

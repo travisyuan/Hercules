@@ -19,6 +19,7 @@ enum E_LOGINSERVER_ST
 
 // supported encryption types: 1- passwordencrypt, 2- passwordencrypt2, 3- both
 #define PASSWORDENC 3
+#define PASSWD_LEN 32+1 // 23+1 for plaintext, 32+1 for md5-ed passwords
 
 struct login_session_data {
 	int account_id;
@@ -30,7 +31,7 @@ struct login_session_data {
 	char mac_address[20];
 
 	char userid[NAME_LENGTH];
-	char passwd[32+1]; // 23+1 for plaintext, 32+1 for md5-ed passwords
+	char passwd[PASSWD_LEN];
 	int passwdenc;
 	char md5key[20];
 	uint16 md5keylen;
@@ -71,7 +72,6 @@ struct Login_Config {
 	unsigned int ip_sync_interval;                  // interval (in minutes) to execute a DNS/IP update (for dynamic IPs)
 	bool log_login;                                 // whether to log login server actions or not
 	char date_format[32];                           // date format used in messages
-	bool console;                                   // console input system enabled?
 	bool new_account_flag,new_acc_length_limit;     // autoregistration via _M/_F ? / if yes minimum length is 4?
 	int start_limited_time;                         // new account expiration time (-1: unlimited)
 	bool use_md5_passwds;                           // work with password hashes instead of plaintext passwords?
@@ -87,8 +87,6 @@ struct Login_Config {
 	unsigned int dynamic_pass_failure_ban_duration; // duration of the ipban
 	bool use_dnsbl;                                 // dns blacklist blocking ?
 	char dnsbl_servs[1024];                         // comma-separated list of dnsbl servers
-
-	char account_engine[256];                       // name of the engine to use (defaults to auto, for the first available engine)
 
 	int client_hash_check;							// flags for checking client md5
 	struct client_hash_node *client_hash_nodes;		// linked list containg md5 hash for each gm group

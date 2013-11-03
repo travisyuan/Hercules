@@ -1,5 +1,6 @@
-// Copyright (c) Athena Dev Teams - Licensed under GNU GPL
-// For more information, see LICENCE in the main folder
+// Copyright (c) Hercules Dev Team, licensed under GNU GPL.
+// See the LICENSE file
+// Portions Copyright (c) Athena Dev Teams
 
 #include "../common/cbasetypes.h"
 #include "../common/mmo.h"
@@ -8,6 +9,8 @@
 #include "../common/malloc.h"
 #include "../common/showmsg.h"
 #include "../common/strlib.h"
+#include "../config/core.h"
+#include "../common/HPM.h"
 #include "socket.h"
 
 #include <stdio.h>
@@ -221,6 +224,13 @@ int naddr_ = 0;   // # of ip addresses
 // Larger packets cause a buffer overflow and stack corruption.
 static size_t socket_max_client_packet = 24576;
 
+#ifdef SHOW_SERVER_STATS
+// Data I/O statistics
+static size_t socket_data_i = 0, socket_data_ci = 0, socket_data_qi = 0;
+static size_t socket_data_o = 0, socket_data_co = 0, socket_data_qo = 0;
+static time_t socket_data_last_tick = 0;
+#endif
+
 // initial recv buffer size (this will also be the max. size)
 // biggest known packet: S 0153 <len>.w <emblem data>.?B -> 24x24 256 color .bmp (0153 + len.w + 1618/1654/1756 bytes)
 #define RFIFO_SIZE (2*1024)
@@ -230,8 +240,6 @@ static size_t socket_max_client_packet = 24576;
 // Maximum size of pending data in the write fifo. (for non-server connections)
 // The connection is closed if it goes over the limit.
 #define WFIFO_MAX (1*1024*1024)
-
-struct socket_data* session[FD_SETSIZE];
 
 #ifdef SEND_SHORTLIST
 int send_shortlist_array[FD_SETSIZE];// we only support FD_SETSIZE sockets, limit the array to that
@@ -280,9 +288,10 @@ void set_nonblocking(int fd, unsigned long yes)
 		ShowError("set_nonblocking: Failed to set socket #%d to non-blocking mode (%s) - Please report this!!!\n", fd, error_msg());
 }
 
-void setsocketopts(int fd)
-{
+void setsocketopts(int fd, struct hSockOpt *opt) {
 	int yes = 1; // reuse fix
+	struct linger lopt;
+		
 #if !defined(WIN32)
 	// set SO_REAUSEADDR to true, unix only. on windows this option causes
 	// the previous owner of the socket to give up, which is not desirable
@@ -297,15 +306,22 @@ void setsocketopts(int fd)
 	// The RO protocol is mainly single-packet request/response, plus the FIFO model already does packet grouping anyway.
 	sSetsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&yes, sizeof(yes));
 
+	if( opt && opt->setTimeo ) {
+		struct timeval timeout;
+		
+		timeout.tv_sec = 5;
+		timeout.tv_usec = 0;
+		
+		sSetsockopt(fd,SOL_SOCKET,SO_RCVTIMEO,(char *)&timeout,sizeof(timeout));
+		sSetsockopt(fd,SOL_SOCKET,SO_SNDTIMEO,(char *)&timeout,sizeof(timeout));
+	}
+	
 	// force the socket into no-wait, graceful-close mode (should be the default, but better make sure)
 	//(http://msdn.microsoft.com/library/default.asp?url=/library/en-us/winsock/winsock/closesocket_2.asp)
-	{
-	struct linger opt;
-	opt.l_onoff = 0; // SO_DONTLINGER
-	opt.l_linger = 0; // Do not care
-	if( sSetsockopt(fd, SOL_SOCKET, SO_LINGER, (char*)&opt, sizeof(opt)) )
+	lopt.l_onoff = 0; // SO_DONTLINGER
+	lopt.l_linger = 0; // Do not care
+	if( sSetsockopt(fd, SOL_SOCKET, SO_LINGER, (char*)&lopt, sizeof(lopt)) )
 		ShowWarning("setsocketopts: Unable to set SO_LINGER mode for connection #%d!\n", fd);
-	}
 }
 
 /*======================================
@@ -352,6 +368,14 @@ int recv_to_fifo(int fd)
 
 	session[fd]->rdata_size += len;
 	session[fd]->rdata_tick = last_tick;
+#ifdef SHOW_SERVER_STATS
+	socket_data_i += len;
+	socket_data_qi += len;
+	if (!session[fd]->flag.server)
+	{
+		socket_data_ci += len;
+	}
+#endif
 	return 0;
 }
 
@@ -371,6 +395,9 @@ int send_from_fifo(int fd)
 	{//An exception has occured
 		if( sErrno != S_EWOULDBLOCK ) {
 			//ShowDebug("send_from_fifo: %s, ending connection #%d\n", error_msg(), fd);
+#ifdef SHOW_SERVER_STATS
+			socket_data_qo -= session[fd]->wdata_size;
+#endif
 			session[fd]->wdata_size = 0; //Clear the send queue as we can't send anymore. [Skotlex]
 			set_eof(fd);
 		}
@@ -385,6 +412,14 @@ int send_from_fifo(int fd)
 			memmove(session[fd]->wdata, session[fd]->wdata + len, session[fd]->wdata_size - len);
 
 		session[fd]->wdata_size -= len;
+#ifdef SHOW_SERVER_STATS
+		socket_data_o += len;
+		socket_data_qo -= len;
+		if (!session[fd]->flag.server)
+		{
+			socket_data_co += len;
+		}
+#endif
 	}
 
 	return 0;
@@ -407,8 +442,7 @@ void flush_fifos(void)
 /*======================================
  *	CORE : Connection functions
  *--------------------------------------*/
-int connect_client(int listen_fd)
-{
+int connect_client(int listen_fd) {
 	int fd;
 	struct sockaddr_in client_address;
 	socklen_t len;
@@ -420,20 +454,18 @@ int connect_client(int listen_fd)
 		ShowError("connect_client: accept failed (%s)!\n", error_msg());
 		return -1;
 	}
-	if( fd == 0 )
-	{// reserved
+	if( fd == 0 ) { // reserved
 		ShowError("connect_client: Socket #0 is reserved - Please report this!!!\n");
 		sClose(fd);
 		return -1;
 	}
-	if( fd >= FD_SETSIZE )
-	{// socket number too big
+	if( fd >= FD_SETSIZE ) { // socket number too big
 		ShowError("connect_client: New socket #%d is greater than can we handle! Increase the value of FD_SETSIZE (currently %d) for your OS to fix this!\n", fd, FD_SETSIZE);
 		sClose(fd);
 		return -1;
 	}
 
-	setsocketopts(fd);
+	setsocketopts(fd,NULL);
 	set_nonblocking(fd, 1);
 
 #ifndef MINICORE
@@ -465,25 +497,22 @@ int make_listen_bind(uint32 ip, uint16 port)
 
 	fd = sSocket(AF_INET, SOCK_STREAM, 0);
 
-	if( fd == -1 )
-	{
+	if( fd == -1 ) {
 		ShowError("make_listen_bind: socket creation failed (%s)!\n", error_msg());
 		exit(EXIT_FAILURE);
 	}
-	if( fd == 0 )
-	{// reserved
+	if( fd == 0 ) { // reserved
 		ShowError("make_listen_bind: Socket #0 is reserved - Please report this!!!\n");
 		sClose(fd);
 		return -1;
 	}
-	if( fd >= FD_SETSIZE )
-	{// socket number too big
+	if( fd >= FD_SETSIZE ) { // socket number too big
 		ShowError("make_listen_bind: New socket #%d is greater than can we handle! Increase the value of FD_SETSIZE (currently %d) for your OS to fix this!\n", fd, FD_SETSIZE);
 		sClose(fd);
 		return -1;
 	}
 
-	setsocketopts(fd);
+	setsocketopts(fd,NULL);
 	set_nonblocking(fd, 1);
 
 	server_address.sin_family      = AF_INET;
@@ -511,7 +540,7 @@ int make_listen_bind(uint32 ip, uint16 port)
 	return fd;
 }
 
-int make_connection(uint32 ip, uint16 port, bool silent) {
+int make_connection(uint32 ip, uint16 port, struct hSockOpt *opt) {
 	struct sockaddr_in remote_address;
 	int fd;
 	int result;
@@ -522,31 +551,29 @@ int make_connection(uint32 ip, uint16 port, bool silent) {
 		ShowError("make_connection: socket creation failed (%s)!\n", error_msg());
 		return -1;
 	}
-	if( fd == 0 )
-	{// reserved
+	if( fd == 0 ) {// reserved
 		ShowError("make_connection: Socket #0 is reserved - Please report this!!!\n");
 		sClose(fd);
 		return -1;
 	}
-	if( fd >= FD_SETSIZE )
-	{// socket number too big
+	if( fd >= FD_SETSIZE ) {// socket number too big
 		ShowError("make_connection: New socket #%d is greater than can we handle! Increase the value of FD_SETSIZE (currently %d) for your OS to fix this!\n", fd, FD_SETSIZE);
 		sClose(fd);
 		return -1;
 	}
 
-	setsocketopts(fd);
+	setsocketopts(fd,opt);
 
 	remote_address.sin_family      = AF_INET;
 	remote_address.sin_addr.s_addr = htonl(ip);
 	remote_address.sin_port        = htons(port);
 
-	if( !silent )
+	if( !( opt && opt->silent ) )
 		ShowStatus("Connecting to %d.%d.%d.%d:%i\n", CONVIP(ip), port);
 
 	result = sConnect(fd, (struct sockaddr *)(&remote_address), sizeof(struct sockaddr_in));
 	if( result == SOCKET_ERROR ) {
-		if( !silent )
+		if( !( opt && opt->silent ) )
 			ShowError("make_connection: connect failed (socket #%d, %s)!\n", fd, error_msg());
 		do_close(fd);
 		return -1;
@@ -574,18 +601,38 @@ static int create_session(int fd, RecvFunc func_recv, SendFunc func_send, ParseF
 	session[fd]->func_send  = func_send;
 	session[fd]->func_parse = func_parse;
 	session[fd]->rdata_tick = last_tick;
+	session[fd]->session_data = NULL;
+	session[fd]->hdata = NULL;
+	session[fd]->hdatac = 0;
 	return 0;
 }
 
 static void delete_session(int fd)
 {
-	if( session_isValid(fd) )
-	{
+	if( session_isValid(fd) ) {
+		unsigned int i;
+#ifdef SHOW_SERVER_STATS
+		socket_data_qi -= session[fd]->rdata_size - session[fd]->rdata_pos;
+		socket_data_qo -= session[fd]->wdata_size;
+#endif
 		aFree(session[fd]->rdata);
 		aFree(session[fd]->wdata);
+<<<<<<< HEAD
 		if (session[fd]->harm_sd)
 			harm_funcs->session_del(fd);
 		aFree(session[fd]->session_data);
+=======
+		if( session[fd]->session_data )
+			aFree(session[fd]->session_data);
+		for(i = 0; i < session[fd]->hdatac; i++) {
+			if( session[fd]->hdata[i]->flag.free ) {
+				aFree(session[fd]->hdata[i]->data);
+				aFree(session[fd]->hdata[i]);
+			}
+		}
+		if( session[fd]->hdata )
+			aFree(session[fd]->hdata);
+>>>>>>> 566529c819bcf9aeb1bd3a4a691c443c2b88d076
 		aFree(session[fd]);
 		session[fd] = NULL;
 	}
@@ -651,6 +698,9 @@ int RFIFOSKIP(int fd, size_t len)
 	}
 
 	s->rdata_pos = s->rdata_pos + len;
+#ifdef SHOW_SERVER_STATS
+	socket_data_qi -= len;
+#endif
 	return 0;
 }
 
@@ -707,6 +757,9 @@ int WFIFOSET(int fd, size_t len)
 		harm_funcs->net_send(fd, s->wdata+s->wdata_size, len);
 
 	s->wdata_size += len;
+#ifdef SHOW_SERVER_STATS
+	socket_data_qo += len;
+#endif
 	//If the interserver has 200% of its normal size full, flush the data.
 	if( s->flag.server && s->wdata_size >= 2*FIFOSIZE_SERVERLINK )
 		flush_fifo(fd);
@@ -826,12 +879,29 @@ int do_sockets(int next)
 			continue;
 
 		// after parse, check client's RFIFO size to know if there is an invalid packet (too big and not parsed)
-		if (session[i]->rdata_size == RFIFO_SIZE && session[i]->max_rdata == RFIFO_SIZE) {
+		if (session[i]->rdata_size == session[i]->max_rdata) {
 			set_eof(i);
 			continue;
 		}
 		RFIFOFLUSH(i);
 	}
+
+#ifdef SHOW_SERVER_STATS
+	if (last_tick != socket_data_last_tick)
+	{
+		char buf[1024];
+		
+		sprintf(buf, "In: %.03f kB/s (%.03f kB/s, Q: %.03f kB) | Out: %.03f kB/s (%.03f kB/s, Q: %.03f kB) | RAM: %.03f MB", socket_data_i/1024., socket_data_ci/1024., socket_data_qi/1024., socket_data_o/1024., socket_data_co/1024., socket_data_qo/1024., iMalloc->usage()/1024.);
+#ifdef _WIN32
+		SetConsoleTitle(buf);
+#else
+		ShowMessage("\033[s\033[1;1H\033[2K%s\033[u", buf);
+#endif
+		socket_data_last_tick = last_tick;
+		socket_data_i = socket_data_ci = 0;
+		socket_data_o = socket_data_co = 0;
+	}
+#endif
 
 	return 0;
 }
@@ -844,7 +914,7 @@ int do_sockets(int next)
 typedef struct _connect_history {
 	struct _connect_history* next;
 	uint32 ip;
-	uint32 tick;
+	int64 tick;
 	int count;
 	unsigned ddos : 1;
 } ConnectHistory;
@@ -960,9 +1030,9 @@ static int connect_check_(uint32 ip)
 			if( hist->ddos )
 			{// flagged as DDoS
 				return (connect_ok == 2 ? 1 : 0);
-			} else if( DIFF_TICK(gettick(),hist->tick) < ddos_interval )
+			} else if( DIFF_TICK(timer->gettick(),hist->tick) < ddos_interval )
 			{// connection within ddos_interval
-				hist->tick = gettick();
+				hist->tick = timer->gettick();
 				if( hist->count++ >= ddos_count )
 				{// DDoS attack detected
 					hist->ddos = 1;
@@ -972,7 +1042,7 @@ static int connect_check_(uint32 ip)
 				return connect_ok;
 			} else
 			{// not within ddos_interval, clear data
-				hist->tick  = gettick();
+				hist->tick  = timer->gettick();
 				hist->count = 0;
 				return connect_ok;
 			}
@@ -983,7 +1053,7 @@ static int connect_check_(uint32 ip)
 	CREATE(hist, ConnectHistory, 1);
 	memset(hist, 0, sizeof(ConnectHistory));
 	hist->ip   = ip;
-	hist->tick = gettick();
+	hist->tick = timer->gettick();
 	hist->next = connect_history[ip&0xFFFF];
 	connect_history[ip&0xFFFF] = hist;
 	return connect_ok;
@@ -991,8 +1061,7 @@ static int connect_check_(uint32 ip)
 
 /// Timer function.
 /// Deletes old connection history records.
-static int connect_check_clear(int tid, unsigned int tick, int id, intptr_t data)
-{
+static int connect_check_clear(int tid, int64 tick, int id, intptr_t data) {
 	int i;
 	int clear = 0;
 	int list  = 0;
@@ -1031,14 +1100,14 @@ int access_ipmask(const char* str, AccessControl* acc)
 {
 	uint32 ip;
 	uint32 mask;
-	unsigned int a[4];
-	unsigned int m[4];
-	int n;
 
 	if( strcmp(str,"all") == 0 ) {
 		ip   = 0;
 		mask = 0;
 	} else {
+		unsigned int a[4];
+		unsigned int m[4];
+		int n;
 		if( ((n=sscanf(str,"%u.%u.%u.%u/%u.%u.%u.%u",a,a+1,a+2,a+3,m,m+1,m+2,m+3)) != 8 && // not an ip + standard mask
 				(n=sscanf(str,"%u.%u.%u.%u/%u",a,a+1,a+2,a+3,m)) != 5 && // not an ip + bit mask
 				(n=sscanf(str,"%u.%u.%u.%u",a,a+1,a+2,a+3)) != 4 ) || // not an ip
@@ -1171,6 +1240,8 @@ void socket_final(void)
 	aFree(session[0]->rdata);
 	aFree(session[0]->wdata);
 	aFree(session[0]);
+	
+	aFree(session);
 }
 
 /// Closes a socket.
@@ -1332,6 +1403,8 @@ void socket_init(void)
 	memset(send_shortlist_set, 0, sizeof(send_shortlist_set));
 #endif
 
+	CREATE(session, struct socket_data *, FD_SETSIZE);
+	
 	socket_config_read(SOCKET_CONF_FILENAME);
 
 	// initialise last send-receive tick
@@ -1344,13 +1417,17 @@ void socket_init(void)
 #ifndef MINICORE
 	// Delete old connection history every 5 minutes
 	memset(connect_history, 0, sizeof(connect_history));
-	add_timer_func_list(connect_check_clear, "connect_check_clear");
-	add_timer_interval(gettick()+1000, connect_check_clear, 0, 0, 5*60*1000);
+	timer->add_func_list(connect_check_clear, "connect_check_clear");
+	timer->add_interval(timer->gettick()+1000, connect_check_clear, 0, 0, 5*60*1000);
 #endif
 
 	ShowInfo("Server supports up to '"CL_WHITE"%u"CL_RESET"' concurrent connections.\n", rlim_cur);
+	
+	/* Hercules Plugin Manager */
+	HPM->share(session,"session");
+	HPM->share(&fd_max,"fd_max");
+	HPM->share(addr_,"addr");
 }
-
 
 bool session_isValid(int fd)
 {
@@ -1389,6 +1466,72 @@ uint32 str2ip(const char* ip_str)
 uint16 ntows(uint16 netshort)
 {
 	return ((netshort & 0xFF) << 8) | ((netshort & 0xFF00) >> 8);
+}
+
+/* [Ind/Hercules] - socket_datasync */
+void socket_datasync(int fd, bool send) {
+	struct {
+		unsigned int length;/* short is not enough for some */
+	} data_list[] = {
+		{ sizeof(struct mmo_charstatus) },
+		{ sizeof(struct quest) },
+		{ sizeof(struct item) },
+		{ sizeof(struct point) },
+		{ sizeof(struct s_skill) },
+		{ sizeof(struct global_reg) },
+		{ sizeof(struct accreg) },
+		{ sizeof(struct status_change_data) },
+		{ sizeof(struct storage_data) },
+		{ sizeof(struct guild_storage) },
+		{ sizeof(struct s_pet) },
+		{ sizeof(struct s_mercenary) },
+		{ sizeof(struct s_homunculus) },
+		{ sizeof(struct s_elemental) },
+		{ sizeof(struct s_friend) },
+		{ sizeof(struct mail_message) },
+		{ sizeof(struct mail_data) },
+		{ sizeof(struct registry) },
+		{ sizeof(struct party_member) },
+		{ sizeof(struct party) },
+		{ sizeof(struct guild_member) },
+		{ sizeof(struct guild_position) },
+		{ sizeof(struct guild_alliance) },
+		{ sizeof(struct guild_expulsion) },
+		{ sizeof(struct guild_skill) },
+		{ sizeof(struct guild) },
+		{ sizeof(struct guild_castle) },
+		{ sizeof(struct fame_list) },
+	};
+	unsigned short i;
+	unsigned int alen = ARRAYLENGTH(data_list);
+	if( send ) {
+		unsigned short p_len = ( alen * 4 ) + 4;
+		WFIFOHEAD(fd, p_len);
+
+		WFIFOW(fd, 0) = 0x2b0a;
+		WFIFOW(fd, 2) = p_len;
+		
+		for( i = 0; i < alen; i++ ) {
+			WFIFOL(fd, 4 + ( i * 4 ) ) = data_list[i].length;
+		}
+		
+		WFIFOSET(fd, p_len);
+	} else {
+		for( i = 0; i < alen; i++ ) {
+			if( RFIFOL(fd, 4 + (i * 4) ) != data_list[i].length ) {
+				/* force the other to go wrong too so both are taken down */
+				WFIFOHEAD(fd, 8);
+				WFIFOW(fd, 0) = 0x2b0a;
+				WFIFOW(fd, 2) = 8;
+				WFIFOL(fd, 4) = 0;
+				WFIFOSET(fd, 8);
+				flush_fifo(fd);
+				/* shut down */
+				ShowFatalError("Servers are out of sync! recompile from scratch (%d)\n",i);
+				exit(EXIT_FAILURE);
+			}
+		}
+	}
 }
 
 #ifdef SEND_SHORTLIST

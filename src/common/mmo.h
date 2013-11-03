@@ -1,10 +1,12 @@
-// Copyright (c) Athena Dev Teams - Licensed under GNU GPL
-// For more information, see LICENCE in the main folder
+// Copyright (c) Hercules Dev Team, licensed under GNU GPL.
+// See the LICENSE file
+// Portions Copyright (c) Athena Dev Teams
 
 #ifndef	_MMO_H_
 #define	_MMO_H_
 
 #include "cbasetypes.h"
+#include "../common/db.h"
 #include <time.h>
 
 // server->client protocol version
@@ -46,14 +48,30 @@
 // 20120307 - 2012-03-07aRagexeRE+ - 0x970
 
 #ifndef PACKETVER
+<<<<<<< HEAD
 	#define PACKETVER	20120716
 	//#define PACKETVER 20111116
+=======
+	#define PACKETVER 20120418
+>>>>>>> 566529c819bcf9aeb1bd3a4a691c443c2b88d076
 #endif
 
-//Remove/Comment this line to disable sc_data saving. [Skotlex]
+// Comment the following line if your client is NOT ragexeRE (required because of conflicting packets in ragexe vs ragexeRE).
+#define PACKETVER_RE
+
+// Client support for experimental RagexeRE UI present in 2012-04-10 and 2012-04-18
+#ifdef PACKETVER_RE
+#if (PACKETVER == 20120410) || (PACKETVER == 20120418)
+	#define	PARTY_RECRUIT
+#endif
+#endif
+
+// Comment the following line to disable sc_data saving. [Skotlex]
 #define ENABLE_SC_SAVING
-//Remove/Comment this line to disable server-side hot-key saving support [Skotlex]
-//Note that newer clients no longer save hotkeys in the registry!
+
+#if PACKETVER >= 20070227
+// Comment the following like to disable server-side hot-key saving support. [Skotlex]
+// Note that newer clients no longer save hotkeys in the registry!
 #define HOTKEY_SAVING
 
 #if PACKETVER < 20090603
@@ -62,12 +80,12 @@
 #elif PACKETVER < 20090617
         // (36 = 9 skills x 4 bars)               (0x07d9,254)
         #define MAX_HOTKEYS 36
-#else
+#else // >= 20090617
         // (38 = 9 skills x 4 bars & 2 Quickslots)(0x07d9,268)
         #define MAX_HOTKEYS 38
-#endif
+#endif // 20090603
+#endif // 20070227
 
-#define MAX_MAP_PER_SERVER 1500 // Increased to allow creation of Instance Maps
 #define MAX_INVENTORY 100
 //Max number of characters per account. Note that changing this setting alone is not enough if the client is not hexed to support more characters as well.
 #define MAX_CHARS 9
@@ -77,12 +95,20 @@
 //Max amount of a single stacked item
 #define MAX_AMOUNT 30000
 #define MAX_ZENY 1000000000
+
+//Official Limit: 2.1b ( the var that stores the money doesn't go much higher than this by default )
+#define MAX_BANK_ZENY 2100000000
+
 #define MAX_FAME 1000000000
 #define MAX_CART 100
-#define MAX_SKILL 3100
-#define GLOBAL_REG_NUM 256   // max permanent character variables per char
-#define ACCOUNT_REG_NUM 64   // max permanent local account variables per account
-#define ACCOUNT_REG2_NUM 16  // max permanent global account variables per account
+#define MAX_SKILL 1478
+#define MAX_SKILL_ID 10015   // [Ind/Hercules] max used skill ID
+//Update this max as necessary. 55 is the value needed for Super Baby currently
+//Raised to 84 since Expanded Super Novice needs it.
+#define MAX_SKILL_TREE 84
+#define GLOBAL_REG_NUM 256   // Max permanent character variables per char
+#define ACCOUNT_REG_NUM 64   // Max permanent local account variables per account
+#define ACCOUNT_REG2_NUM 16  // Max permanent global account variables per account
 //Should hold the max of GLOBAL/ACCOUNT/ACCOUNT2 (needed for some arrays that hold all three)
 #define MAX_REG_NUM 256
 #define DEFAULT_WALK_SPEED 150
@@ -91,15 +117,16 @@
 #define MAX_STORAGE 600
 #define MAX_GUILD_STORAGE 600
 #define MAX_PARTY 12
-#define MAX_GUILD 16+10*6	// increased max guild members +6 per 1 extension levels [Lupus]
-#define MAX_GUILDPOSITION 20	// increased max guild positions to accomodate for all members [Valaris] (removed) [PoW]
+#define MAX_GUILD 16+10*6       // Increased max guild members +6 per 1 extension levels [Lupus]
+#define MAX_GUILDPOSITION 20    // Increased max guild positions to accomodate for all members [Valaris] (removed) [PoW]
 #define MAX_GUILDEXPULSION 32
 #define MAX_GUILDALLIANCE 16
-#define MAX_GUILDSKILL	15 // increased max guild skills because of new skills [Sara-chan]
+#define MAX_GUILDSKILL	15      // Increased max guild skills because of new skills [Sara-chan]
 #define MAX_GUILDLEVEL 50
-#define MAX_GUARDIANS 8	//Local max per castle. [Skotlex]
-#define MAX_QUEST_DB 2200 //Max quests that the server will load
-#define MAX_QUEST_OBJECTIVES 3 //Max quest objectives for a quest
+#define MAX_GUARDIANS 8         // Local max per castle. [Skotlex]
+#define MAX_QUEST_DB 2670       // Max quests that the server will load
+#define MAX_QUEST_OBJECTIVES 3  // Max quest objectives for a quest
+#define MAX_START_ITEMS 32	    // Max number of items allowed to be given to a char whenever it's created. [mkbu95]
 
 // for produce
 #define MIN_ATTRIBUTE 0
@@ -118,43 +145,43 @@
 #define NAME_LENGTH (23 + 1)
 //For item names, which tend to have much longer names.
 #define ITEM_NAME_LENGTH 50
-//For Map Names, which the client considers to be 16 in length including the .gat extension
+//For Map Names, which the client considers to be 16 in length including the .gat extension.
 #define MAP_NAME_LENGTH (11 + 1)
 #define MAP_NAME_LENGTH_EXT (MAP_NAME_LENGTH + 4)
 
 #define MAX_FRIENDS 40
 #define MAX_MEMOPOINTS 3
 
-//Size of the fame list arrays.
+// Size of the fame list arrays.
 #define MAX_FAME_LIST 10
 
-//Limits to avoid ID collision with other game objects
+// Limits to avoid ID collision with other game objects
 #define START_ACCOUNT_NUM 2000000
 #define END_ACCOUNT_NUM 100000000
 #define START_CHAR_NUM 150000
 
-//Guilds
+// Guilds
 #define MAX_GUILDMES1 60
 #define MAX_GUILDMES2 120
 
-//Base Homun skill.
+// Base Homun skill.
 #define HM_SKILLBASE 8001
 #define MAX_HOMUNSKILL 43
-#define MAX_HOMUNCULUS_CLASS	52	//[orn], Increased to 60 from 16 to allow new Homun-S.
+#define MAX_HOMUNCULUS_CLASS	52	// [orn] Increased to 60 from 16 to allow new Homun-S.
 #define HM_CLASS_BASE 6001
 #define HM_CLASS_MAX (HM_CLASS_BASE+MAX_HOMUNCULUS_CLASS-1)
 
-//Mail System
+// Mail System
 #define MAIL_MAX_INBOX 30
 #define MAIL_TITLE_LENGTH 40
 #define MAIL_BODY_LENGTH 200
 
-//Mercenary System
+// Mercenary System
 #define MC_SKILLBASE 8201
 #define MAX_MERCSKILL 40
-#define MAX_MERCENARY_CLASS 44
+#define MAX_MERCENARY_CLASS 61
 
-//Elemental System
+// Elemental System
 #define MAX_ELEMENTALSKILL 42
 #define EL_SKILLBASE 8401
 #define MAX_ELESKILLTREE 3
@@ -180,7 +207,7 @@ enum item_types {
 };
 
 
-//Questlog system [Kevin] [Inkfish]
+// Questlog system [Kevin] [Inkfish]
 typedef enum quest_state { Q_INACTIVE, Q_ACTIVE, Q_COMPLETE } quest_state;
 
 struct quest {
@@ -194,7 +221,7 @@ struct item {
 	int id;
 	short nameid;
 	short amount;
-	unsigned short equip; // location(s) where item is equipped (using enum equip_pos for bitmasking)
+	unsigned int equip; // Location(s) where item is equipped (using enum equip_pos for bitmasking).
 	char identify;
 	char refine;
 	char attribute;
@@ -214,15 +241,23 @@ enum e_skill_flag
 	SKILL_FLAG_PERMANENT,
 	SKILL_FLAG_TEMPORARY,
 	SKILL_FLAG_PLAGIARIZED,
-	SKILL_FLAG_REPLACED_LV_0, // temporary skill overshadowing permanent skill of level 'N - SKILL_FLAG_REPLACED_LV_0',
-	SKILL_FLAG_PERM_GRANTED, // permanent, granted through someway e.g. script
-	//...
+	SKILL_FLAG_UNUSED,			/* needed to maintain the order since the values are saved, can be renamed and used if a new flag is necessary */
+	SKILL_FLAG_PERM_GRANTED,    // Permanent, granted through someway (e.g. script).
+	/* */
+	/* MUST be the last, because with it the flag value stores a dynamic value (flag+lv) */
+	SKILL_FLAG_REPLACED_LV_0,   // Temporary skill overshadowing permanent skill of level 'N - SKILL_FLAG_REPLACED_LV_0',
+};
+
+enum e_mmo_charstatus_opt {
+	OPT_NONE		= 0x0,
+	OPT_SHOW_EQUIP	= 0x1,
+	OPT_ALLOW_PARTY	= 0x2,
 };
 
 struct s_skill {
 	unsigned short id;
 	unsigned char lv;
-	unsigned char flag; // see enum e_skill_flag
+	unsigned char flag; // See enum e_skill_flag
 };
 
 struct global_reg {
@@ -230,14 +265,14 @@ struct global_reg {
 	char value[256];
 };
 
-//Holds array of global registries, used by the char server and converter.
+// Holds array of global registries, used by the char server and converter.
 struct accreg {
 	int account_id, char_id;
 	int reg_num;
 	struct global_reg reg[MAX_REG_NUM];
 };
 
-//For saving status changes across sessions. [Skotlex]
+// For saving status changes across sessions. [Skotlex]
 struct status_change_data {
 	unsigned short type; //SC_type
 	long val1, val2, val3, val4, tick; //Remaining duration.
@@ -345,6 +380,7 @@ struct mmo_charstatus {
 
 	unsigned int base_exp,job_exp;
 	int zeny;
+	int bank_vault;
 
 	short class_;
 	unsigned int status_point,skill_point;
@@ -383,10 +419,13 @@ struct mmo_charstatus {
 #ifdef HOTKEY_SAVING
 	struct hotkey hotkeys[MAX_HOTKEYS];
 #endif
-	bool show_equip;
-	short rename;
+	bool show_equip, allow_party;
+	unsigned short rename;
+	unsigned short slotchange;
 
 	time_t delete_date;
+
+	unsigned char font;
 };
 
 typedef enum mail_status {
@@ -515,8 +554,14 @@ struct guild {
 	struct guild_alliance alliance[MAX_GUILDALLIANCE];
 	struct guild_expulsion expulsion[MAX_GUILDEXPULSION];
 	struct guild_skill skill[MAX_GUILDSKILL];
-
+	
+	/* TODO: still used for something?|: */
 	unsigned short save_flag; // for TXT saving
+	
+	short *instance;
+	unsigned short instances;
+	
+	void *channel;
 };
 
 struct guild_castle {
@@ -545,6 +590,13 @@ struct fame_list {
 	int id;
 	int fame;
 	char name[NAME_LENGTH];
+};
+
+enum fame_list_type {
+	RANKTYPE_BLACKSMITH = 0,
+	RANKTYPE_ALCHEMIST  = 1,
+	RANKTYPE_TAEKWON    = 2,
+	RANKTYPE_PK         = 3, //Not supported yet
 };
 
 enum { //Change Guild Infos
@@ -737,15 +789,75 @@ enum {
 
 	JOB_KAGEROU = 4211,
 	JOB_OBORO,
+	JOB_REBELLION = 4215,
 
 	JOB_MAX,
 };
+
+//Total number of classes (for data storage)
+#define CLASS_COUNT (JOB_MAX - JOB_NOVICE_HIGH + JOB_MAX_BASIC)
 
 enum {
 	SEX_FEMALE = 0,
 	SEX_MALE,
 	SEX_SERVER
 };
+
+enum weapon_type {
+	W_FIST,	//Bare hands
+	W_DAGGER,	//1
+	W_1HSWORD,	//2
+	W_2HSWORD,	//3
+	W_1HSPEAR,	//4
+	W_2HSPEAR,	//5
+	W_1HAXE,	//6
+	W_2HAXE,	//7
+	W_MACE,	//8
+	W_2HMACE,	//9 (unused)
+	W_STAFF,	//10
+	W_BOW,	//11
+	W_KNUCKLE,	//12
+	W_MUSICAL,	//13
+	W_WHIP,	//14
+	W_BOOK,	//15
+	W_KATAR,	//16
+	W_REVOLVER,	//17
+	W_RIFLE,	//18
+	W_GATLING,	//19
+	W_SHOTGUN,	//20
+	W_GRENADE,	//21
+	W_HUUMA,	//22
+	W_2HSTAFF,	//23
+	MAX_WEAPON_TYPE,
+	// dual-wield constants
+	W_DOUBLE_DD, // 2 daggers
+	W_DOUBLE_SS, // 2 swords
+	W_DOUBLE_AA, // 2 axes
+	W_DOUBLE_DS, // dagger + sword
+	W_DOUBLE_DA, // dagger + axe
+	W_DOUBLE_SA, // sword + axe
+};
+
+enum ammo_type {
+	A_ARROW = 1,
+	A_DAGGER,   //2
+	A_BULLET,   //3
+	A_SHELL,    //4
+	A_GRENADE,  //5
+	A_SHURIKEN, //6
+	A_KUNAI,     //7
+	A_CANNONBALL,	//8
+	A_THROWWEAPON	//9
+};
+
+/* packet size constant for itemlist */
+#if MAX_INVENTORY > MAX_STORAGE && MAX_INVENTORY > MAX_CART
+#define MAX_ITEMLIST MAX_INVENTORY
+#elif MAX_CART > MAX_INVENTORY && MAX_CART > MAX_STORAGE
+#define MAX_ITEMLIST MAX_CART
+#else
+#define MAX_ITEMLIST MAX_STORAGE
+#endif
 
 // sanity checks...
 #if MAX_ZENY > INT_MAX

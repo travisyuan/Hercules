@@ -1,16 +1,17 @@
 //===== Hercules Script ======================================
 //= Episode 12 Socket Enchant NPC
-//===== By: ================================================== 
+//===== By: ==================================================
 //= Gepard
-//===== Current Version: ===================================== 
-//= 1.1
-//===== Description: ========================================= 
-//= [Aegis Conversion]
+//===== Current Version: =====================================
+//= 1.1a
+//===== Description: =========================================
+//= [Official Conversion]
 //= Adds slots to selected weapons and armor.
-//===== Additional Comments: ================================= 
+//===== Additional Comments: =================================
 //= 1.0 First version.
 //= 1.1 Duplicates now spawn from floating NPCs. [L0ne_W0lf]
-//============================================================ 
+//= 1.1a Added 'disable_items' command. [Euphy]
+//============================================================
 
 -	script	Leablem#dummy::SocketEnchant2	-1,{
 	if (checkweight(1201,1) == 0)
@@ -376,13 +377,14 @@
 	}
 }
 
-payon,236,199,3	duplicate(SocketEnchant2)	Leablem#pay	86
-lighthalzen,96,137,3	duplicate(SocketEnchant2)	Leablem#lhz	86
-prt_in,22,60,6	duplicate(SocketEnchant2)	Leablem#prt	86
-moc_ruins,154,86,3	duplicate(SocketEnchant2)	Leablem#moc	86
+payon,236,199,3	duplicate(SocketEnchant2)	Leablem#pay	4_M_04
+lighthalzen,96,137,3	duplicate(SocketEnchant2)	Leablem#lhz	4_M_04
+prt_in,22,60,6	duplicate(SocketEnchant2)	Leablem#prt	4_M_04
+moc_ruins,154,86,3	duplicate(SocketEnchant2)	Leablem#moc	4_M_04
 
 function	script	Func_Socket2	{
 
+	disable_items;
 	mes "[Leablem]";
 	if(getarg(7,0) != 0 && getarg(8,0) != 0)
 	{
